@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BizDNAii - Корпоративный ИИ-Ассистент</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Outfit', sans-serif; }
+        .gradient-text { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .hero-bg { background: radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.15) 0%, rgba(15, 23, 42, 0) 50%); }
+    </style>
+</head>
+<body class="bg-slate-950 text-white min-h-screen overflow-x-hidden">
+    <!-- Nav -->
+    <nav class="fixed w-full z-50 bg-slate-950/80 backdrop-blur-md border-b border-white/10">
+        <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+            <div class="text-2xl font-bold tracking-tighter">BizDNA<span class="text-indigo-500">ii</span></div>
+            <div class="hidden md:flex gap-8 text-sm font-medium text-slate-400">
+                <a href="#" class="hover:text-white transition">Возможности</a>
+                <a href="#" class="hover:text-white transition">Решения</a>
+                <a href="#" class="hover:text-white transition">Цены</a>
+            </div>
+            <button class="bg-white text-slate-950 px-6 py-2 rounded-full font-semibold hover:bg-indigo-50 transition">Войти</button>
+        </div>
+    </nav>
+
+    <!-- Hero -->
+    <section class="relative pt-32 pb-20 px-6 hero-bg">
+        <div class="max-w-5xl mx-auto text-center">
+            <div class="inline-block mb-6 px-4 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-sm font-medium">
+                🚀 Новое поколение корпоративного AI
+            </div>
+            <h1 class="text-5xl md:text-7xl font-bold mb-8 leading-tight">
+                Ваш бизнес. <br />
+                <span class="gradient-text">Под управлением ИИ.</span>
+            </h1>
+            <p class="text-xl text-slate-400 mb-12 max-w-2xl mx-auto leading-relaxed">
+                BizDNAii создает цифровых двойников ваших лучших сотрудников. 
+                Продажи, HR, Юриспруденция и Аналитика — теперь работают 24/7 с мгновенной реакцией.
+            </p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <button onclick="document.querySelector('[aria-label=\'Open Chat\']')?.click()" class="px-8 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full font-bold text-lg hover:shadow-lg hover:shadow-indigo-500/25 transition transform hover:-translate-y-1">
+                    Попробовать Демо
+                </button>
+                <button class="px-8 py-4 bg-white/5 border border-white/10 rounded-full font-bold text-lg hover:bg-white/10 transition">
+                    Узнать больше
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features -->
+    <section class="py-20 bg-slate-900/50">
+        <div class="max-w-7xl mx-auto px-6 grid md:grid-cols-3 gap-8">
+            <div class="p-8 rounded-3xl bg-white/5 border border-white/5 hover:border-indigo-500/30 transition group">
+                <div class="w-12 h-12 bg-indigo-500/20 rounded-2xl flex items-center justify-center text-indigo-400 mb-6 group-hover:scale-110 transition">🧠</div>
+                <h3 class="text-xl font-bold mb-3">Стратегический Мозг</h3>
+                <p class="text-slate-400">Анализирует гигабайты данных компании, чтобы давать точные советы руководителям.</p>
+            </div>
+            <div class="p-8 rounded-3xl bg-white/5 border border-white/5 hover:border-purple-500/30 transition group">
+                <div class="w-12 h-12 bg-purple-500/20 rounded-2xl flex items-center justify-center text-purple-400 mb-6 group-hover:scale-110 transition">🗣</div>
+                <h3 class="text-xl font-bold mb-3">Голосовое Управление</h3>
+                <p class="text-slate-400">Управляйте процессами голосом. Отправляйте задачи и получайте отчеты на ходу.</p>
+            </div>
+            <div class="p-8 rounded-3xl bg-white/5 border border-white/5 hover:border-pink-500/30 transition group">
+                <div class="w-12 h-12 bg-pink-500/20 rounded-2xl flex items-center justify-center text-pink-400 mb-6 group-hover:scale-110 transition">🛡</div>
+                <h3 class="text-xl font-bold mb-3">Полная Безопасность</h3>
+                <p class="text-slate-400">Ваши данные изолированы и защищены. Мы используем передовые протоколы шифрования.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Widget Script -->
+    <script src="/bizdnaii-widget.js"></script>
+</body>
+</html>
