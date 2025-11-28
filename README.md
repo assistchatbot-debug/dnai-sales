@@ -50,8 +50,6 @@
 
 ### Core Tables
 
-**companies** - Multi-tenant company data
-```sql
 id, name, subdomain, settings, default_language, created_at
 leads - Customer leads with Telegram integration
 
