@@ -1,145 +1,160 @@
-from aiogram import Router, F, types
+import logging
+import aiohttp
+import io
+from aiogram import Router, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from config import API_BASE_URL
 from states import SalesFlow
-from keyboards import get_start_keyboard, get_recommendation_keyboard
-from config import API_BASE_URL, COMPANY_ID
-import aiohttp
-import logging
-import os
+from keyboards import get_start_keyboard
 
 router = Router()
 
-@router.message(Command("start"))
+async def start_session(user_id: int):
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.post(f'{API_BASE_URL}/sales/1/chat', json={
+                'message': 'start_session',
+                'user_id': str(user_id),
+                'username': f'user_{user_id}'
+            }) as resp:
+                return await resp.json()
+        except Exception as e:
+            logging.error(f'Session start error: {e}')
+            return None
+
+async def process_backend_response(message: types.Message, response_text: str):
+    """
+    Helper to process backend response: check for contact request, 
+    show menu if needed, or just show text.
+    """
+    # Check for [REQUEST_CONTACT] marker
+    if '[REQUEST_CONTACT]' in response_text:
+        clean_response = response_text.replace('[REQUEST_CONTACT]', '').strip()
+        
+        # Create contact button
+        contact_kb = ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="📱 Поделиться контактом", request_contact=True)]],
+            resize_keyboard=True,
+            one_time_keyboard=True
+        )
+        await message.answer(clean_response, reply_markup=contact_kb)
+    
+    # Check if conversation seems to be ending (manager will contact)
+    elif "менеджер свяжется" in response_text.lower():
+        await message.answer(response_text, reply_markup=get_start_keyboard())
+        
+    else:
+        # Normal response - remove keyboard if it was there (or keep it hidden)
+        await message.answer(response_text, reply_markup=ReplyKeyboardRemove())
+
+@router.message(Command('start'))
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.set_state(SalesFlow.qualifying)
-    await message.answer("Привет! Я Умный Агент (BizDNAi).\n\n🚀 Я новое поколение корпоративного AI.\n\nЯ помогу подобрать идеальное решение.\nИспользуйте меню, пишите или говорите и я вам отвечу.\n\nДля смены языка используйте /lang", reply_markup=get_start_keyboard())
+    await start_session(message.from_user.id)
     
-    # Initialize session silently
-    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
+    await message.answer(
+        "Привет! Я Умный Агент (BizDNAi).\n\n🚀 Я новое поколение корпоративного AI.\n\nЯ помогу подобрать идеальное решение.\nПишите или говорите, и я вам отвечу.\n\nДля смены языка используйте /lang",
+        reply_markup=get_start_keyboard()
+    )
+
+@router.message(Command('id'))
+async def cmd_id(message: types.Message):
+    await message.answer(f"Ваш Chat ID: `{message.chat.id}`\n\nСкопируйте его и отправьте разработчику.")
+
+@router.message(F.contact)
+async def handle_contact(message: types.Message, state: FSMContext):
+    contact = message.contact
+    phone = contact.phone_number
+    user_id = str(message.from_user.id)
+    username = message.from_user.username or f"user_{user_id}"
+    
+    status_msg = await message.answer("⏳ Обрабатываю контакт...")
+    
+    async with aiohttp.ClientSession() as session:
         try:
-            payload = {
-                "message": "start_session", 
-                "user_id": str(message.from_user.id),
-                "username": message.from_user.username
-            }
-            async with session.post(f"{API_BASE_URL}/sales/{COMPANY_ID}/chat", json=payload) as resp:
+            async with session.post(f'{API_BASE_URL}/sales/1/chat', json={
+                'message': phone,
+                'user_id': user_id,
+                'username': username,
+                'phone': phone
+            }) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    await state.update_data(session_id=data.get("session_id"))
-        except Exception as e: logging.error(f"Connection Error: {e}")
-
-@router.message(Command("lang"))
-async def cmd_lang(message: types.Message):
-    # Simple toggle for now, can be expanded to a menu
-    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
-        await message.answer("Для смены языка напишите: 'Switch to English' или 'Переключить на Русский'.")
-
-@router.message(Command("log"))
-async def cmd_log(message: types.Message):
-    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
-        try:
-            async with session.get(f"{API_BASE_URL}/logs") as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    logs = data.get("logs", "No logs")
-                    # Split if too long
-                    if len(logs) > 4000:
-                        logs = logs[-4000:]
-                    await message.answer(f"📜 **Backend Logs:**\n\n", parse_mode="Markdown")
+                    response_text = data.get('response', 'Спасибо! Номер получен.')
+                    await status_msg.delete()
+                    await message.answer(response_text, reply_markup=get_start_keyboard())
                 else:
-                    await message.answer("Failed to fetch logs.")
+                    await status_msg.delete()
+                    await message.answer("Ошибка при отправке контакта.", reply_markup=get_start_keyboard())
         except Exception as e:
-            await message.answer(f"Error fetching logs: {e}")
+            logging.error(f'Backend error: {e}')
+            await status_msg.delete()
+            await message.answer("Ошибка соединения с сервером.")
 
-@router.message(F.text == "🚀 Подобрать решение")
-async def start_selection(message: types.Message, state: FSMContext):
-    await state.set_state(SalesFlow.qualifying)
-    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
-        try:
-            payload = {
-                "message": "start_session", 
-                "user_id": str(message.from_user.id),
-                "username": message.from_user.username
-            }
-            async with session.post(f"{API_BASE_URL}/sales/{COMPANY_ID}/chat", json=payload) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    await state.update_data(session_id=data.get("session_id"))
-        except Exception as e: logging.error(f"Connection Error: {e}")
-    await message.answer("Отлично! Расскажите, какая задача стоит перед вами?", reply_markup=types.ReplyKeyboardRemove())
-
-@router.message(SalesFlow.qualifying, F.voice)
+@router.message(F.voice)
 async def handle_voice(message: types.Message, state: FSMContext):
-    await message.answer("🎧 Слушаю...")
+    user_id = str(message.from_user.id)
+    username = message.from_user.username or f"user_{user_id}"
     
-    # Get file
-    file_id = message.voice.file_id
-    file = await message.bot.get_file(file_id)
-    file_path = file.file_path
+    status_msg = await message.answer("🎤 Слушаю...")
     
-    # Download
-    file_on_disk = f"{file_id}.ogg"
-    await message.bot.download_file(file_path, file_on_disk)
-    
-    user_data = await state.get_data()
-    session_id = user_data.get("session_id")
-    
-    # Send to API
-    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
-        if not session_id:
-            await message.answer("Ошибка сессии. Пожалуйста, начните заново с /start")
-            return
-
-        data = aiohttp.FormData()
-        data.add_field('session_id', str(session_id))
-        data.add_field('user_id', str(message.from_user.id))
-        if message.from_user.username:
-            data.add_field('username', message.from_user.username)
+    try:
+        # Download voice file
+        voice_file = await message.bot.get_file(message.voice.file_id)
+        file_data = io.BytesIO()
+        await message.bot.download(voice_file, file_data)
+        file_data.seek(0)
         
-        try:
-            with open(file_on_disk, 'rb') as f:
-                data.add_field('file', f, filename=file_on_disk)
-                
-                async with session.post(f"{API_BASE_URL}/sales/{COMPANY_ID}/voice", data=data) as resp:
-                    if resp.status == 200:
-                        result = await resp.json()
-                        user_text = result.get("text")
-                        ai_response = result.get("response")
-                        
-                        await message.answer(f"🗣 Вы сказали: \"{user_text}\"")
-                        await message.answer(ai_response)
-                    else:
-                        error_text = await resp.text()
-                        logging.error(f"API Error {resp.status}: {error_text}")
-                        await message.answer(f"Ошибка обработки голоса сервером: {resp.status}")
-        except Exception as e:
-            logging.error(f"Voice Error: {e}")
-            await message.answer(f"Не удалось отправить голосовое: {e}")
-        finally:
-            if os.path.exists(file_on_disk):
-                os.remove(file_on_disk)
+        # Prepare form data
+        data = aiohttp.FormData()
+        data.add_field('file', file_data, filename='voice.ogg', content_type='audio/ogg')
+        data.add_field('session_id', 'voice_session') # Dummy session id
+        data.add_field('user_id', user_id)
+        data.add_field('username', username)
+        
+        async with aiohttp.ClientSession() as session:
+             async with session.post(f'{API_BASE_URL}/sales/1/voice', data=data) as resp:
+                 if resp.status == 200:
+                     result = await resp.json()
+                     ai_response = result.get('response', '')
+                     await status_msg.delete()
+                     await process_backend_response(message, ai_response)
+                 else:
+                     await status_msg.delete()
+                     await message.answer("Ошибка обработки голосового сообщения.")
+    except Exception as e:
+        logging.error(f"Voice error: {e}")
+        await status_msg.delete()
+        await message.answer("Произошла ошибка при обработке голоса.")
 
-@router.message(SalesFlow.qualifying, F.text)
+@router.message()
 async def handle_text(message: types.Message, state: FSMContext):
-    user_data = await state.get_data()
-    session_id = user_data.get("session_id")
-    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
+    if message.text.startswith('/'):
+        return
+
+    user_id = str(message.from_user.id)
+    username = message.from_user.username or f"user_{user_id}"
+    
+    status_msg = await message.answer("⏳ Думаю...")
+    
+    async with aiohttp.ClientSession() as session:
         try:
-            payload = {
-                "session_id": session_id, 
-                "message": message.text, 
-                "user_id": str(message.from_user.id),
-                "username": message.from_user.username
-            }
-            async with session.post(f"{API_BASE_URL}/sales/{COMPANY_ID}/chat", json=payload) as resp:
+            async with session.post(f'{API_BASE_URL}/sales/1/chat', json={
+                'message': message.text,
+                'user_id': user_id,
+                'username': username
+            }) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    await message.answer(data.get("response"))
-                else: 
-                    error_text = await resp.text()
-                    logging.error(f"API Error {resp.status}: {error_text}")
-                    await message.answer(f"Произошла ошибка при общении с мозгом: {resp.status}")
+                    ai_response = data.get('response', '')
+                    await status_msg.delete()
+                    await process_backend_response(message, ai_response)
+                else:
+                    await status_msg.delete()
+                    await message.answer("Не удалось связаться с сервером.")
         except Exception as e:
-            logging.error(f"Connection Error: {e}")
-            await message.answer(f"Не удалось связаться с сервером: {e}")
+            logging.error(f'Backend connection error: {e}')
+            await status_msg.delete()
+            await message.answer("Ошибка соединения.")
