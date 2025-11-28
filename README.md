@@ -106,6 +106,7 @@ docker-compose up -d --build
 bash
 docker-compose logs -f bot
 docker-compose logs -f backend
+
 📁 Project Structure
 dnai-sales/
 ├── backend/
@@ -132,6 +133,7 @@ dnai-sales/
 ├── docker-compose.yml
 ├── .env.example
 └── README.md
+
 🔌 API Endpoints
 Sales Agent
 POST /sales/{company_id}/chat - Text chat
