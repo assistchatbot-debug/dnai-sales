@@ -159,6 +159,10 @@ dnai-sales/
 ├── .env.example
 └── README.md
 
+<img width="393" height="533" alt="image" src="https://github.com/user-attachments/assets/30b96620-5716-459a-ad59-d594684feb04" />
+
+
+
 🔌 API Endpoints
 Sales Agent
 POST /sales/{company_id}/chat - Text chat
