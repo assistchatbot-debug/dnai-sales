@@ -43,6 +43,7 @@
    │    GPT      │                     │     API      │
    └─────────────┘                     └──────────────┘
 
+<img width="410" height="544" alt="image" src="https://github.com/user-attachments/assets/eb36a4a5-51dd-4229-afdd-8c58ad10d93d" />
 
 ## 📦 Tech Stack
 
