@@ -225,45 +225,85 @@ bash
 DATABASE_URL=postgresql+asyncpg://...?ssl=require
 Async/await errors
 bash
+
 # Ensure all DB operations use async/await
+
 # Use db.flush() instead of db.refresh() to avoid greenlet errors
+
 📊 Performance
+
 Rate Limiting: 100 req/min for chat, 10 req/min for voice
+
 Connection Pooling: 20 connections, 10 overflow
+
 Async Processing: Non-blocking I/O for all operations
+
 🔐 Security
+
 ✅ Rate limiting on all endpoints
+
 ✅ Environment-based secrets
+
 ✅ SSL/TLS for database connections
+
 ✅ Input validation with Pydantic
+
 📝 License
+
 MIT License - see LICENSE file for details
 
+
 🤝 Contributing
+
 Fork the repository
+
 Create a feature branch
+
 Commit your changes
+
 Push to the branch
+
 Open a Pull Request
 
+
 Implementation Plan - Update README.md
+
 Goal Description
+
 Update the README.md file to reflect the current state of the project, including recently added features like the Email Service and multi-channel notifications. Also, add a "Roadmap" section to outline future development.
 
+
 User Review Required
+
  Review the "Roadmap" section to ensure it aligns with the user's vision.
+ 
  Confirm the Environment Variables for Email Service.
+ 
 Proposed Changes
+
 Documentation
+
 [MODIFY] 
+
 README.md
+
 Features: Add "Multi-Channel Notifications" (Telegram + Email).
+
 Architecture: Mention Email Service.
+
 Tech Stack: Add Email (SMTP) details.
+
 Project Structure: Add backend/services/email_service.py and backend/services/telegram_service.py.
+
 Environment Variables: Add Email configuration (EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASSWORD, ADMIN_EMAIL).
+
 Roadmap: Add a new section with planned features (CRM Integration, Analytics Dashboard, Voice Output, Payment Integration).
+
 Verification Plan
+
 Manual Verification
+
 Visual Check: Render the markdown and ensure it looks correct and covers all points.
+
 User Review: Ask the user to review the content, especially the Roadmap and Env Vars.
+
