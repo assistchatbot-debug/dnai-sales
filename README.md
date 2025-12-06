@@ -165,33 +165,61 @@ dnai-sales/
 
 🔌 API Endpoints
 Sales Agent
+
 POST /sales/{company_id}/chat - Text chat
+
 POST /sales/{company_id}/voice - Voice message processing
+
 POST /sales/{company_id}/configure - Agent configuration
+
 Companies
+
 POST /companies/ - Create company
+
 GET /companies/{company_id} - Get company details
+
 Monitoring
+
 GET / - Health check
+
 GET /logs - Application logs
+
 🤖 Bot Commands
+
 /start - Initialize bot and select language
+
 /lang - Change language
+
 /log - View backend logs (admin)
+
 🌍 Supported Languages
+
 🇬🇧 English (en)
+
 🇷🇺 Русский (ru)
+
 🇰🇿 Қазақша (kk)
+
 🇰🇬 Кыргызча (ky)
+
 🇺🇿 O'zbekcha (uz)
+
 🇺🇦 Українська (uk)
+
 🐛 Troubleshooting
+
 Bot not responding
+
 bash
+
 docker-compose logs bot
+
 docker-compose restart bot
+
 Database connection errors
+
 bash
+
 # Check DATABASE_URL in .env
 # Ensure SSL is enabled for managed databases
 DATABASE_URL=postgresql+asyncpg://...?ssl=require
