@@ -192,7 +192,7 @@ GET /logs - Application logs
 
 /log - View backend logs (admin)
 
-🌍 Supported Languages
+🌍 *Supported Languages*
 
 🇬🇧 English (en)
 
