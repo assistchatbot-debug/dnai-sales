@@ -98,7 +98,7 @@ Create a
 .env
  file with the following variables:
 
-# BizDNAii Widget
+# BizDNAi Widget
 
 ## Overview
 Preact-based chat widget with voice support for lead collection.
