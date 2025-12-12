@@ -98,6 +98,72 @@ Create a
 .env
  file with the following variables:
 
+# BizDNAii Widget
+
+## Overview
+Preact-based chat widget with voice support for lead collection.
+
+## Features
+- 💬 Text chat with AI assistant
+- 🎤 Push-to-talk voice recording (hold to record)
+- 🌐 Multilingual support (RU/EN synced with main site)
+- 📱 Mobile responsive design
+- 🔔 Tooltip notification with pulse animation
+- 🔄 Reset button for new lead testing
+
+## Configuration
+
+### Widget Position
+```jsx
+style={{ right: '40px' }}           // Toggle button position
+style={{ marginRight: '-30px' }}    // Dialog window offset
+```
+
+### API Endpoints
+```
+POST /sales/{company_id}/chat   - Text messages
+POST /sales/{company_id}/voice  - Voice messages
+```
+
+### Language Detection
+Widget reads language from:
+1. `localStorage.getItem('bizdnaii_widget_lang')`
+2. Event listener: `bizdnaii-language-change`
+
+### Data Sent to Backend
+**Text chat:**
+```json
+{
+  "message": "user text",
+  "session_id": "web-session", 
+  "user_id": "v_xxxxx",
+  "language": "en"
+}
+```
+
+**Voice:**
+```
+FormData: file, session_id, user_id, language
+```
+
+## Build & Deploy
+```bash
+# Build widget
+docker-compose build --no-cache widget
+
+# Extract to host
+docker run --rm -v /var/www/bizdnai/widget-source:/out \
+  dnai-sales-widget cp /usr/share/nginx/html/bizdnaii-widget.js /out/
+
+# Embed on site
+<script src="https://bizdnai.com/widget-source/bizdnaii-widget.js"></script>
+```
+
+## Version History
+- **v4.0**: Pointer events for push-to-talk, reset creates new lead
+- **v3.x**: Language support, tooltip, pulse animation adjustments
+
+
 bash
 # Telegram Bot
 BOT_TOKEN=your_telegram_bot_token
