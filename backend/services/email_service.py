@@ -16,7 +16,7 @@ class EmailService:
         self.manager_email = os.getenv('MANAGER_EMAIL')
         self.executor = ThreadPoolExecutor(max_workers=3)
         
-    def _send_email_sync(self, lead_contact: str, conversation_history: List[Dict[str, str]], ai_summary: str, lead_phone: str = None):
+    def _send_email_sync(self, lead_contact: str, conversation_history: List[Dict[str, str]], ai_summary: str, lead_phone: str = None, to_email: str = None):
         """
         Synchronous email sending function (runs in thread pool)
         """
@@ -30,19 +30,20 @@ class EmailService:
             # Format conversation history
             conversation_text = '\n\n'.join([
                 f"{'👤 Клиент' if msg.get('sender') == 'user' else '🤖 Бот'}: {msg.get('text', '')}"
-                for msg in conversation_history[-10:]
+                for msg in conversation_history[-20:]
             ])
 
             # Create email message
             msg = MIMEMultipart('alternative')
-            msg['Subject'] = f'🎯 Новый лид от BizDNAi - {lead_phone or lead_contact}'
+            msg['Subject'] = f'🎯 Новый лид: {lead_contact} - {lead_phone or "телефон не указан"}'  
             msg['From'] = self.smtp_user
             msg['To'] = self.manager_email
 
             # Plain text version
             text_content = f'''Новый лид от BizDNAi
 
-Телефон: {lead_phone or lead_contact}
+Имя: {lead_contact}
+Телефон: {lead_phone or "не указан"}
 
 Анализ AI:
 {ai_summary}
@@ -82,7 +83,8 @@ class EmailService:
         <div class="content">
             <div class="section">
                 <h3>📞 Контактные данные:</h3>
-                <p class="phone">{lead_phone or lead_contact}</p>
+                <p><strong>Имя:</strong> {lead_contact}</p>
+                <p class="phone"><strong>Телефон:</strong> {lead_phone or "не указан"}</p>
             </div>
             
             <div class="section">
@@ -95,7 +97,7 @@ class EmailService:
 '''
             
             # Add conversation messages
-            for msg_item in conversation_history[-10:]:
+            for msg_item in conversation_history[-20:]:
                 sender = msg_item.get('sender')
                 text = msg_item.get('text', '')
                 css_class = 'user' if sender == 'user' else 'bot'
@@ -143,7 +145,7 @@ class EmailService:
             traceback.print_exc()
             return False
     
-    async def send_lead_notification(self, lead_contact: str, conversation_history: List[Dict[str, str]], ai_summary: str, lead_phone: str = None):
+    async def send_lead_notification(self, lead_contact: str, conversation_history: List[Dict[str, str]], ai_summary: str, lead_phone: str = None, to_email: str = None):
         """
         Async wrapper for email sending
         """
@@ -154,7 +156,8 @@ class EmailService:
             lead_contact,
             conversation_history,
             ai_summary,
-            lead_phone
+            lead_phone,
+            to_email
         )
 
 email_service = EmailService()

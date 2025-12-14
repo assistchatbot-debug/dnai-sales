@@ -13,6 +13,19 @@ class Company(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
     subdomain = Column(String, unique=True, index=True)
+    
+    # Company details
+    bin_iin = Column(String)  # ИИН/БИН компании
+    phone = Column(String)  # Телефон компании
+    whatsapp = Column(String)  # WhatsApp компании
+    email = Column(String)  # Email для уведомлений
+    description = Column(Text)  # Краткое описание компании
+    logo_url = Column(String)  # URL логотипа компании
+    
+    # Bot configuration
+    bot_token = Column(String)  # Токен Telegram бота компании
+    manager_chat_id = Column(BigInteger)  # Chat ID менеджера компании
+    
     settings = Column(JSONB, default={})
     default_language = Column(String, default="ru")
     created_at = Column(DateTime(timezone=True), server_default=func.now())

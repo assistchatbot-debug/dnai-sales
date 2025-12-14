@@ -8,7 +8,6 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
-# Configure Logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -39,7 +38,6 @@ app.include_router(widget.router)
 async def startup():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # Migration for missing column on managed DB
         from sqlalchemy import text
         try:
             await conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS sales_agent_session_id UUID"))
@@ -63,9 +61,15 @@ async def get_logs(request: Request, lines: int = 50):
         return {"logs": "No log file found."}
     try:
         with open("app.log", "r") as f:
-            # Efficiently read last N lines
             import collections
             last_lines = collections.deque(f, maxlen=lines)
             return {"logs": "".join(last_lines)}
     except Exception as e:
         return {"logs": f"Error reading logs: {str(e)}"}
+
+@app.get("/widget-enabled")
+async def check_widget_enabled():
+    """Check if widget is enabled"""
+    import os
+    enabled = os.path.exists('/var/www/bizdnai/widget_enabled.txt')
+    return {"enabled": enabled}

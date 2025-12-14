@@ -20,25 +20,31 @@ class TelegramService:
         text = re.sub(r'</?(?:div|span|p)>', '', text, flags=re.IGNORECASE)
         return text
         
-    async def send_lead_notification(self, lead_contact: str, conversation_history: List[Dict[str, str]], ai_summary: str, lead_phone: str = None):
-        if not self.bot_token or not self.manager_chat_id:
+    async def send_lead_notification(self, lead_contact: str, conversation_history: List[Dict[str, str]], ai_summary: str, lead_phone: str = None, bot_token: str = None, manager_chat_id: str = None):
+        # Use provided tokens or fallback to env
+        token = bot_token or self.bot_token
+        chat_id = manager_chat_id or self.manager_chat_id
+        
+        if not token or not chat_id:
             logging.warning('⚠️ Telegram credentials not configured')
             return False
 
         try:
-            logging.info(f'📱 Sending Telegram notification to {self.manager_chat_id}...')
+            logging.info(f'📱 Sending Telegram notification to {chat_id}...')
+            api_url = f'https://api.telegram.org/bot{token}'
             
             # Clean AI summary from HTML tags
             clean_summary = self._clean_html_tags(ai_summary)
             
             conversation_text = '\n\n'.join([
                 f"{'🧑 Клиент' if msg.get('sender') == 'user' else '🤖 Бот'}: {msg.get('text', '')}"
-                for msg in conversation_history[-10:]
+                for msg in conversation_history[-20:]
             ])
 
             message = f'''🎯 <b>Новый лид от BizDNAi</b>
 
-📞 <b>Телефон:</b> <code>{lead_phone or lead_contact}</code>
+👤 <b>Имя:</b> {lead_contact}
+📞 <b>Телефон:</b> <code>{lead_phone or "не указан"}</code>
 
 🤖 <b>Анализ AI:</b>
 <pre>{clean_summary}</pre>
@@ -51,9 +57,9 @@ class TelegramService:
 
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    f'{self.api_url}/sendMessage',
+                    f'{api_url}/sendMessage',
                     json={
-                        'chat_id': self.manager_chat_id,
+                        'chat_id': chat_id,
                         'text': message,
                         'parse_mode': 'HTML'
                     }

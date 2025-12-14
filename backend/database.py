@@ -1,24 +1,38 @@
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 import os
-from dotenv import load_dotenv
 
-load_dotenv()
+DATABASE_URL = os.getenv('DATABASE_URL')
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL environment variable is not set")
 
 engine = create_async_engine(
-    DATABASE_URL, 
+    DATABASE_URL,
     echo=False,
-    pool_size=20,
-    max_overflow=10
+    pool_pre_ping=True
 )
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=AsyncSession)
-Base = declarative_base()
+
+SessionLocal = sessionmaker(
+    autocommit=False, 
+    autoflush=False, 
+    bind=engine, 
+    class_=AsyncSession,
+    expire_on_commit=False  # ИСПРАВЛЕНИЕ: отключаем автоматическое обновление после commit
+)
 
 async def get_db():
     async with SessionLocal() as session:
-        try:
-            yield session
-        finally:
-            await session.close()
+        yield session
+
+Base = declarative_base()
+
+
+# Context manager for background tasks
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def get_db_session():
+    async with SessionLocal() as session:
+        yield session

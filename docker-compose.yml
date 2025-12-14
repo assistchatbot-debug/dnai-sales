@@ -24,5 +24,4 @@ services:
   widget:
     build: ./frontend/widget
     container_name: bizdnaii_widget
-    ports: ["80:80", "443:443"]
-    volumes: [./certs:/etc/nginx/certs]
+    restart: always

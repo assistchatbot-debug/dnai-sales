@@ -4,139 +4,102 @@ from openai import AsyncOpenAI
 
 class AIService:
     def __init__(self):
-        self.api_key = os.getenv("OPENROUTER_API_KEY")
-        self.model = os.getenv("AI_MODEL", "openai/gpt-oss-120b:exacto")
-        self.base_url = "https://openrouter.ai/api/v1"
+        # Use custom AI Agent
+        self.agent_url = os.getenv("AI_AGENT_URL")
+        self.agent_key = os.getenv("AI_AGENT_KEY")
         
-        if self.api_key:
-            self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
+        if self.agent_url and self.agent_key:
+            self.client = AsyncOpenAI(
+                api_key=self.agent_key, 
+                base_url=self.agent_url + "/api/v1/"
+            )
+            print(f"✅ AI Agent configured: {self.agent_url}")
         else:
             self.client = None
-            print("Warning: OPENROUTER_API_KEY not set.")
+            print("⚠️ AI Agent not configured - check AI_AGENT_URL and AI_AGENT_KEY")
 
-    async def get_product_recommendation(
-        self, 
-        user_query: str, 
-        history: List[Dict[str, str]], 
-        product_catalog: List[Dict[str, Any]],
-        system_prompt: str = None,
-        language: str = "ru"
-    ) -> str:
+    async def get_product_recommendation(self, user_query: str, history: List[Dict[str, str]], product_catalog: List[Dict[str, Any]], system_prompt: str = None, language: str = "ru") -> str:
         if not self.client:
-            return "AI Service is not configured."
-
-        if not system_prompt:
-            system_prompt = f"""Вы - эксперт-консультант BizDNAi по внедрению умных помощников в бизнес.
-
-🎯 ГЛАВНАЯ ЦЕЛЬ: Получить контактные данные клиента (телефон).
-
-💬 СТИЛЬ ОБЩЕНИЯ:
-- Пишите каждую мысль с новой строки.
-- Оставляйте пустую строку между предложениями.
-- Максимум 2-3 предложения в ответе.
-- Мягкий, консультативный тон.
-
-🔄 СТРАТЕГИЯ ДИАЛОГА:
-
-1. ПЕРВЫЙ КОНТАКТ:
-"Добрый день! Мы помогаем внедрять умных помощников в бизнес.
-
-Они могут автоматизировать работу с клиентами или формировать отчёты.
-
-Подскажите, какая сфера деятельности требует систематизации?"
-
-2. КЛИЕНТ НАЗВАЛ СФЕРУ:
-"Да, автоматизация этой сферы ускорит процессы.
-
-А какую ещё сферу хотели бы улучшить?
-
-Например, продажи, финансы или управление."
-
-3. КЛИЕНТ НАЗВАЛ 2-3 СФЕРЫ:
-"Отлично! У нас есть решения для этих задач.
-
-Давайте обсудим детали с экспертом.
-
-Пришлите, пожалуйста, ваш номер телефона. [REQUEST_CONTACT]"
-
-4. КЛИЕНТ ДАЛ ТЕЛЕФОН:
-"Спасибо, номер получен!
-
-Наш менеджер свяжется с вами в ближайшее время.
-
-Есть ли ещё вопросы?"
-
-КРИТИЧЕСКИЕ ПРАВИЛА:
-- Если просите телефон -> добавьте в конец текста метку [REQUEST_CONTACT].
-- Если телефон получен -> скажите "менеджер свяжется".
-- НЕ пишите символы \\n текстом, делайте реальные переносы.
-
-ЯЗЫК: {language}"""
-
-        messages = [{"role": "system", "content": system_prompt}]
+            return "AI Agent not configured."
         
-        recent_history = history[-30:] if len(history) > 30 else history
+        # Build messages for agent - send ONLY user messages
+        # Agent has its own flow, don't confuse it with our bot responses
+        messages = []
         
-        for msg in recent_history:
-            role = "user" if msg.get("sender") == "user" else "assistant"
-            messages.append({"role": role, "content": msg.get("text", "")})
-            
-        messages.append({"role": "user", "content": user_query})
-
+        # Add only user messages from history
+        for msg in history[-20:]:
+            if msg.get("sender") == "user":
+                text = msg.get("text", "")
+                if text and text not in ['received', 'sent']:
+                    messages.append({"role": "user", "content": text})
+        
+        # Add current user message with lang parameter
+        import json
+        msg_with_lang = json.dumps({"message": user_query, "lang": language}, ensure_ascii=False)
+        messages.append({"role": "user", "content": msg_with_lang})
+        
+        # Debug logging
+        print(f"🔍 History: {len(history)} messages")
+        print(f"🔍 Last 3: {[m.get('text','')[:40] for m in history[-3:]]}")
+        print(f"🔍 Sending to AI: {msg_with_lang[:100]}")
+        
         try:
             response = await self.client.chat.completions.create(
-                model=self.model,
+                model="n/a",
                 messages=messages,
-                max_tokens=500,
-                temperature=0.7,
-                extra_headers={
-                    "HTTP-Referer": "https://bizdnaii.com",
-                    "X-Title": "BizDNAii Sales Agent"
-                }
+                extra_body={"include_retrieval_info": False}
             )
             
+            if not response.choices or not response.choices[0].message:
+                print("⚠️ AI empty response")
+                return "Какую сферу хотели бы автоматизировать?"
+            
             answer = response.choices[0].message.content
-            
-            if not answer or answer.strip() == "":
-                return "Добрый день! Подскажите, какая сфера деятельности требует систематизации?"
-            
-            return answer.strip().replace('\\n', '\n')
+            print(f"✅ AI response: {answer[:50]}...")
+            return answer.strip() if answer else "Какую сферу хотели бы автоматизировать?"
             
         except Exception as e:
-            print(f"Error calling AI: {e}")
-            return "Добрый день! Расскажите о вашем бизнесе."
+            print(f"❌ AI Error: {e}")
+            return "Какую сферу хотели бы автоматизировать?"
 
     async def generate_conversation_summary(self, history: List[Dict[str, str]], language: str = "ru") -> str:
         if not self.client or not history:
-            return "Нет данных"
+            return "Нет данных для анализа"
+        
+        print(f"📊 Generating summary for {len(history)} messages")
+        
+        # Build prompt for summary
+        summary_prompt = """Проанализируй диалог с клиентом и создай краткий отчёт.
 
-        summary_prompt = """Проанализируй диалог и составь подробный отчет для менеджера.
-Игнорируй последние технические сообщения (спасибо, номер получен).
-Фокусируйся на сути запросов клиента.
+Формат:
+1. Интересы клиента - какие сферы назвал
+2. Готовность - Холодный/Тёплый/Горячий
+3. Рекомендации менеджеру
 
-СТРУКТУРА ОТЧЕТА:
-1. **Интересы клиента** (перечисли все названные сферы)
-2. **Готовность** (Холодный/Теплый/Горячий - объясни почему)
-3. **Боли/Задачи** (что именно хочет автоматизировать)
-4. **Рекомендация** (какие продукты предложить, стратегия звонка)
-
-Объем: 150-200 слов. Используй Markdown."""
+Объём: 100-150 слов."""
 
         messages = [{"role": "system", "content": summary_prompt}]
         
         for msg in history[-30:]:
             role = "user" if msg.get("sender") == "user" else "assistant"
             messages.append({"role": role, "content": msg.get("text", "")})
-
+        
         try:
             response = await self.client.chat.completions.create(
-                model=self.model,
+                model="n/a",
                 messages=messages,
-                max_tokens=1000,
-                temperature=0.3
+                extra_body={"include_retrieval_info": False}
             )
-            return response.choices[0].message.content or "Нет данных"
-        except:
-            return "Ошибка генерации сводки"
+            
+            if not response.choices or not response.choices[0].message:
+                return "Ошибка: пустой ответ AI"
+            
+            summary = response.choices[0].message.content
+            print(f"✅ Summary: {len(summary) if summary else 0} chars")
+            return summary.strip() if summary else "Нет данных"
+            
+        except Exception as e:
+            print(f"❌ Summary Error: {e}")
+            return f"Ошибка генерации: {str(e)}"
 
 ai_service = AIService()
