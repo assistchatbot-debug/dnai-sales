@@ -598,7 +598,6 @@ Manual Verification
 
 Visual Check: Render the markdown and ensure it looks correct and covers all points.
 
-User Review: Ask the user to review the content, especially the Roadmap and Env Vars.
 ---
 ## Лицензия
 
