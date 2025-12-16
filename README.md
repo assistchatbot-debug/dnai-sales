@@ -265,12 +265,65 @@ services:
 ```
 POST /sales/1/widget-enabled?enabled=false
 ```
+---
 
-## Лицензия
+## 🔐 SuperAdmin Bot (EN)
 
-© 2025 BizDNAi
+**@BizDNAi_SuperAdmin_bot** - centralized company management and multitenancy.
 
+### Features
 
+#### 🏢 Company Management
+- **Create/Edit** companies through 9-step process:
+  1. Company Name
+  2. TIN/BIN (Tax ID)
+  3. Phone Number
+  4. WhatsApp Number
+  5. Email (for reports)
+  6. Description
+  7. Logo (image upload)
+  8. **Bot Token** (Telegram bot token)
+  9. **Manager Chat ID** (Telegram manager chat ID for notifications)
+
+- **View company list** with indicators:
+  - 🤖 - Bot configured
+  - ❌ - Bot not configured
+
+#### 📈 System Monitoring
+- **Real-time system status**:
+  - Backend: Online/Offline
+  - Database: Online/Offline
+  - Voice Input: Online
+  - **Active Bots**: number of configured bots
+
+### Multitenancy
+
+Each company receives:
+- **Own Telegram bot** (via bot_token)
+- **Separate manager** (via manager_chat_id)
+- **Personal email notifications** (via company email)
+- **Isolated lead data**
+
+### Usage
+
+1. **Start**: Send `/start` to @BizDNAi_SuperAdmin_bot
+2. **Create Company**: 
+   - Press "🏢 Companies"
+   - Select "➕ Create company"
+   - Complete 9 steps
+3. **Edit**:
+   - "🏢 Companies" → "✏️ Edit company"
+   - Enter company ID
+   - Update fields (`.` = keep unchanged)
+4. **Check Status**: Press "📈 Status"
+
+### Technical Details
+
+- **Auto-loading**: Main bot loads all active companies from DB on startup
+- **Dynamic Management**: Changes apply after main bot restart
+- **Security**: Access only for authorized SuperAdmin (via SUPER_ADMIN_CHAT_ID)
+- **Fallback**: Uses `.env` values when DB data is missing
+---
 
 # BizDNAi Widget
 
@@ -546,4 +599,8 @@ Manual Verification
 Visual Check: Render the markdown and ensure it looks correct and covers all points.
 
 User Review: Ask the user to review the content, especially the Roadmap and Env Vars.
+---
+## Лицензия
+
+© 2025 BizDNAi
 
