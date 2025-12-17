@@ -42,8 +42,10 @@ class CompanyFlow(StatesGroup):
     editing_email = State()
     editing_description = State()
     editing_logo = State()
-    editing_bot_token = State()  # NEW
-    editing_manager_chat_id = State()  # NEW
+    editing_bot_token = State()
+    editing_manager_chat_id = State()
+    editing_ai_endpoint = State()  # Step 10
+    editing_ai_api_key = State()    # Step 11
 
 def get_main_keyboard():
     return ReplyKeyboardMarkup(
@@ -110,7 +112,7 @@ async def back_to_main(message: types.Message, state: FSMContext):
 async def start_create_company(message: types.Message, state: FSMContext):
     await state.set_state(CompanyFlow.editing_name)
     await state.update_data(id=None)
-    await message.answer("📝 <b>Создание - Шаг 1/9: Название</b>\n\nВведите название:", parse_mode='HTML')
+    await message.answer("📝 <b>Создание - Шаг 1/11: Название</b>\n\nВведите название:", parse_mode='HTML')
 
 @dp.message(CompanyFlow.viewing_list, F.text == "✏️ Редактировать компанию")
 async def start_edit_company(message: types.Message, state: FSMContext):
@@ -127,9 +129,17 @@ async def select_company_for_edit(message: types.Message, state: FSMContext):
     
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.get(f'{API_BASE_URL}/sales/company/{company_id}') as resp:
+            # Use /companies/all to get ALL fields including sensitive ones
+            async with session.get(f'{API_BASE_URL}/sales/companies/all') as resp:
                 if resp.status == 200:
-                    company = await resp.json()
+                    companies = await resp.json()
+                    company = next((c for c in companies if c['id'] == company_id), None)
+                    
+                    if not company:
+                        await message.answer("❌ Компания не найдена", reply_markup=get_main_keyboard())
+                        await state.clear()
+                        return
+                    
                     await state.update_data(
                         id=company_id,
                         name=company.get('name'),
@@ -140,12 +150,14 @@ async def select_company_for_edit(message: types.Message, state: FSMContext):
                         description=company.get('description'),
                         logo_url=company.get('logo_url'),
                         bot_token=company.get('bot_token'),
-                        manager_chat_id=company.get('manager_chat_id')
+                        manager_chat_id=company.get('manager_chat_id'),
+                        ai_endpoint=company.get('ai_endpoint'),
+                        ai_api_key=company.get('ai_api_key')
                     )
                     
                     await state.set_state(CompanyFlow.editing_name)
                     await message.answer(
-                        f"📝 <b>Шаг 1/9: Название</b>\n\n"
+                        f"📝 <b>Шаг 1/11: Название</b>\n\n"
                         f"<i>Текущее:</i> {company.get('name') or 'не указано'}\n\n"
                         f"Введите новое или '.' чтобы оставить:",
                         parse_mode='HTML'
@@ -165,7 +177,7 @@ async def process_name(message: types.Message, state: FSMContext):
     if message.text != '.':
         await state.update_data(name=message.text)
     await state.set_state(CompanyFlow.editing_bin)
-    await message.answer(f"🔢 <b>Шаг 2/9: ИИН/БИН</b>\n\n<i>Текущее:</i> {data.get('bin_iin') or 'не указано'}\n\nВведите или '.':", parse_mode='HTML')
+    await message.answer(f"🔢 <b>Шаг 2/11: ИИН/БИН</b>\n\n<i>Текущее:</i> {data.get('bin_iin') or 'не указано'}\n\nВведите или '.':", parse_mode='HTML')
 
 @dp.message(CompanyFlow.editing_bin)
 async def process_bin(message: types.Message, state: FSMContext):
@@ -173,7 +185,7 @@ async def process_bin(message: types.Message, state: FSMContext):
     if message.text != '.':
         await state.update_data(bin_iin=message.text)
     await state.set_state(CompanyFlow.editing_phone)
-    await message.answer(f"📱 <b>Шаг 3/9: Телефон</b>\n\n<i>Текущий:</i> {data.get('phone') or 'не указано'}\n\nВведите или '.':", parse_mode='HTML')
+    await message.answer(f"📱 <b>Шаг 3/11: Телефон</b>\n\n<i>Текущий:</i> {data.get('phone') or 'не указано'}\n\nВведите или '.':", parse_mode='HTML')
 
 @dp.message(CompanyFlow.editing_phone)
 async def process_phone(message: types.Message, state: FSMContext):
@@ -181,7 +193,7 @@ async def process_phone(message: types.Message, state: FSMContext):
     if message.text != '.':
         await state.update_data(phone=message.text)
     await state.set_state(CompanyFlow.editing_whatsapp)
-    await message.answer(f"💬 <b>Шаг 4/9: WhatsApp</b>\n\n<i>Текущий:</i> {data.get('whatsapp') or 'не указано'}\n\nВведите или '.':", parse_mode='HTML')
+    await message.answer(f"💬 <b>Шаг 4/11: WhatsApp</b>\n\n<i>Текущий:</i> {data.get('whatsapp') or 'не указано'}\n\nВведите или '.':", parse_mode='HTML')
 
 @dp.message(CompanyFlow.editing_whatsapp)
 async def process_whatsapp(message: types.Message, state: FSMContext):
@@ -189,7 +201,7 @@ async def process_whatsapp(message: types.Message, state: FSMContext):
     if message.text != '.':
         await state.update_data(whatsapp=message.text)
     await state.set_state(CompanyFlow.editing_email)
-    await message.answer(f"📧 <b>Шаг 5/9: Email</b>\n\n<i>Текущий:</i> {data.get('email') or 'не указано'}\n\nВведите или '.':", parse_mode='HTML')
+    await message.answer(f"📧 <b>Шаг 5/11: Email</b>\n\n<i>Текущий:</i> {data.get('email') or 'не указано'}\n\nВведите или '.':", parse_mode='HTML')
 
 @dp.message(CompanyFlow.editing_email)
 async def process_email(message: types.Message, state: FSMContext):
@@ -198,7 +210,7 @@ async def process_email(message: types.Message, state: FSMContext):
         await state.update_data(email=message.text)
     await state.set_state(CompanyFlow.editing_description)
     desc = data.get('description') or 'не указано'
-    await message.answer(f"📄 <b>Шаг 6/9: Описание</b>\n\n<i>Текущее:</i> {desc[:50]}...\n\nВведите или '.':", parse_mode='HTML')
+    await message.answer(f"📄 <b>Шаг 6/11: Описание</b>\n\n<i>Текущее:</i> {desc[:50]}...\n\nВведите или '.':", parse_mode='HTML')
 
 @dp.message(CompanyFlow.editing_description)
 async def process_description(message: types.Message, state: FSMContext):
@@ -206,7 +218,7 @@ async def process_description(message: types.Message, state: FSMContext):
     if message.text != '.':
         await state.update_data(description=message.text)
     await state.set_state(CompanyFlow.editing_logo)
-    await message.answer(f"📷 <b>Шаг 7/9: Логотип</b>\n\n<i>Текущий:</i> {data.get('logo_url') or 'нет'}\n\nОтправьте фото или '.':", parse_mode='HTML')
+    await message.answer(f"📷 <b>Шаг 7/11: Логотип</b>\n\n<i>Текущий:</i> {data.get('logo_url') or 'нет'}\n\nОтправьте фото или '.':", parse_mode='HTML')
 
 @dp.message(CompanyFlow.editing_logo)
 async def process_logo(message: types.Message, state: FSMContext):
@@ -238,7 +250,7 @@ async def process_logo(message: types.Message, state: FSMContext):
     await state.set_state(CompanyFlow.editing_bot_token)
     token = data.get('bot_token') or 'не указан'
     token_preview = token[:20] + '...' if len(token) > 20 else token
-    await message.answer(f"🤖 <b>Шаг 8/9: Bot Token</b>\n\n<i>Текущий:</i> {token_preview}\n\nВведите или '.':", parse_mode='HTML')
+    await message.answer(f"🤖 <b>Шаг 8/11: Bot Token</b>\n\n<i>Текущий:</i> {token_preview}\n\nВведите или '.':", parse_mode='HTML')
 
 @dp.message(CompanyFlow.editing_bot_token)
 async def process_bot_token(message: types.Message, state: FSMContext):
@@ -248,10 +260,11 @@ async def process_bot_token(message: types.Message, state: FSMContext):
     
     await state.set_state(CompanyFlow.editing_manager_chat_id)
     manager = data.get('manager_chat_id') or 'не указан'
-    await message.answer(f"👤 <b>Шаг 9/9: Manager Chat ID</b>\n\n<i>Текущий:</i> {manager}\n\nВведите или '.':", parse_mode='HTML')
+    await message.answer(f"👤 <b>Шаг 9/11: Manager Chat ID</b>\n\n<i>Текущий:</i> {manager}\n\nВведите или '.':", parse_mode='HTML')
 
 @dp.message(CompanyFlow.editing_manager_chat_id)
 async def process_manager_chat_id(message: types.Message, state: FSMContext):
+    data = await state.get_data()
     if message.text != '.':
         try:
             chat_id = int(message.text)
@@ -260,8 +273,30 @@ async def process_manager_chat_id(message: types.Message, state: FSMContext):
             await message.answer("⚠️ Неверный формат. Введите число:")
             return
     
-    await save_company(message, state)
+    # Go to AI endpoint step
+    await state.set_state(CompanyFlow.editing_ai_endpoint)
+    endpoint = data.get('ai_endpoint') or 'не указан'
+    await message.answer(f"🤖 <b>Шаг 10/11: AI Endpoint</b>\n\n<i>Текущий:</i> {endpoint}\n\nВведите URL или '.':", parse_mode='HTML')
 
+
+
+@dp.message(CompanyFlow.editing_ai_endpoint)
+async def process_ai_endpoint(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    if message.text != '.':
+        await state.update_data(ai_endpoint=message.text)
+    
+    await state.set_state(CompanyFlow.editing_ai_api_key)
+    api_key = data.get('ai_api_key') or 'не указан'
+    key_preview = api_key[:20] + '...' if len(api_key) > 20 else api_key
+    await message.answer(f"🔑 <b>Шаг 11/11: AI API Key</b>\n\n<i>Текущий:</i> {key_preview}\n\nВведите ключ или '.':", parse_mode='HTML')
+
+@dp.message(CompanyFlow.editing_ai_api_key)
+async def process_ai_api_key(message: types.Message, state: FSMContext):
+    if message.text != '.':
+        await state.update_data(ai_api_key=message.text)
+    
+    await save_company(message, state)
 async def save_company(message: types.Message, state: FSMContext):
     data = await state.get_data()
     status_msg = await message.answer("⏳ Сохранение...")
@@ -344,6 +379,21 @@ async def btn_status(message: types.Message):
                     status.append(f"⚠️ База данных: {resp.status}")
     except:
         status.append("❌ База данных: Offline")
+    
+    # FastAPI status
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f'{API_BASE_URL}/', timeout=aiohttp.ClientTimeout(total=3)) as resp:
+                if resp.status == 200:
+                    result = await resp.json()
+                    if 'message' in result or 'detail' in result or result:
+                        status.append("✅ FastAPI: Online")
+                    else:
+                        status.append("⚠️ FastAPI: Unexpected response")
+                else:
+                    status.append(f"⚠️ FastAPI: {resp.status}")
+    except:
+        status.append("❌ FastAPI: Offline")
     
     status.append("✅ Голосовой ввод: Online")
     

@@ -25,6 +25,11 @@ class TelegramService:
         token = bot_token or self.bot_token
         chat_id = manager_chat_id or self.manager_chat_id
         
+        # MULTITENANCY LOG
+        token_source = "DB" if bot_token else ".env"
+        chat_id_source = "DB" if manager_chat_id else ".env"
+        logging.info(f'🔐 MULTITENANCY: bot_token from {token_source}, manager_chat_id from {chat_id_source}')
+        
         if not token or not chat_id:
             logging.warning('⚠️ Telegram credentials not configured')
             return False

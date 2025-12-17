@@ -247,7 +247,27 @@ async def sales_chat(request: Request, company_id: int, chat_data: ChatMessage, 
         history = await get_conversation_history(db, lead_id, limit=20)
         
         catalog = []
-        ai_response = await ai_service.get_product_recommendation(
+        
+        # Get company for multitenancy
+        result = await db.execute(select(Company).where(Company.id == company_id))
+        company = result.scalars().first()
+        
+        # 🔐 MULTITENANCY: Get company-specific AI or fallback to default
+        from services.ai_service import get_ai_service
+        company_ai = ai_service  # Default
+        ai_source = ".env (default)"
+        
+        if company and company.ai_endpoint and company.ai_api_key:
+            company_ai = get_ai_service(
+                company_id=company_id,
+                ai_endpoint=company.ai_endpoint,
+                ai_api_key=company.ai_api_key
+            )
+            ai_source = f"DB (company {company_id})"
+        
+        logging.info(f"🤖 MULTITENANCY AI REQUEST: using {ai_source}")
+        
+        ai_response = await company_ai.get_product_recommendation(
             user_query=chat_data.message,
             history=history,
             product_catalog=catalog,
@@ -499,6 +519,20 @@ async def upsert_company(data: dict, db: AsyncSession = Depends(get_db)):
         company.description = data['description']
     if 'logo_url' in data:
         company.logo_url = data['logo_url']
+    
+    # Multitenancy fields
+    if 'bot_token' in data:
+        company.bot_token = data['bot_token']
+        logging.info(f'🔐 Updated bot_token for company {company_id}')
+    if 'manager_chat_id' in data:
+        company.manager_chat_id = data['manager_chat_id']
+        logging.info(f'👤 Updated manager_chat_id for company {company_id}: {data["manager_chat_id"]}')
+    if 'ai_endpoint' in data:
+        company.ai_endpoint = data['ai_endpoint']
+        logging.info(f'🤖 Updated ai_endpoint for company {company_id}')
+    if 'ai_api_key' in data:
+        company.ai_api_key = data['ai_api_key']
+        logging.info(f'🔑 Updated ai_api_key for company {company_id}')
     
     await db.commit()
     await db.refresh(company)
@@ -762,7 +796,9 @@ async def get_all_companies(db: AsyncSession = Depends(get_db)):
             'description': c.description,
             'logo_url': c.logo_url,
             'bot_token': c.bot_token,
-            'manager_chat_id': c.manager_chat_id
+            'manager_chat_id': c.manager_chat_id,
+            'ai_endpoint': c.ai_endpoint,
+            'ai_api_key': c.ai_api_key
         } for c in companies]
     except Exception as e:
         logging.error(f'Get all companies error: {e}')

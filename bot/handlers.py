@@ -131,7 +131,7 @@ async def handle_voice(message: types.Message, state: FSMContext):
     user_id = str(message.from_user.id)
     username = message.from_user.username or f"user_{user_id}"
     
-    status_msg = await message.answer("🎤 Слушаю...")
+    status_msg = await message.answer("🎤 Думаю...")
     
     # Get session_id from state
     data = await state.get_data()
@@ -241,18 +241,7 @@ async def process_manager_command(message: types.Message, text: str):
     
     # Enhanced status check with real system verification
     if 'статус' in text_lower or 'status' in text_lower:
-        status_parts = ["✅ <b>Статус системы</b>\n"]
-        
-        # Check Backend API
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(f'{API_BASE_URL}/', timeout=aiohttp.ClientTimeout(total=3)) as resp:
-                    if resp.status == 200:
-                        status_parts.append("✅ Backend API - работает")
-                    else:
-                        status_parts.append(f"⚠️ Backend API - код {resp.status}")
-        except Exception as e:
-            status_parts.append("❌ Backend API - недоступен")
+        status_parts = ["📊 <b>Статус системы</b>\n"]
         
         # Check AI Agent (chat endpoint)
         try:
@@ -270,10 +259,8 @@ async def process_manager_command(message: types.Message, text: str):
             status_parts.append("❌ AI Агент - недоступен")
         
         status_parts.extend([
-            "✅ Голосовой ввод - настроен",
             "🤖 Telegram Bot - активен (polling)",
-            "🌐 Виджет - работает на сайте",
-            "� База данных - подключена"
+            "🌐 Виджет - работает на сайте"
         ])
         
         await message.answer('\n'.join(status_parts), parse_mode='HTML')

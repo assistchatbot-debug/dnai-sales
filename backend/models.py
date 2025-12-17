@@ -26,6 +26,10 @@ class Company(Base):
     bot_token = Column(String)  # Токен Telegram бота компании
     manager_chat_id = Column(BigInteger)  # Chat ID менеджера компании
     
+    # AI configuration
+    ai_endpoint = Column(Text)  # AI API endpoint URL
+    ai_api_key = Column(Text)  # AI API key
+    
     settings = Column(JSONB, default={})
     default_language = Column(String, default="ru")
     created_at = Column(DateTime(timezone=True), server_default=func.now())

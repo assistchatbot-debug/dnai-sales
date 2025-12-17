@@ -1,24 +1,31 @@
+import logging
 from typing import List, Dict, Any
 import os
 from openai import AsyncOpenAI
 
 class AIService:
-    def __init__(self):
-        # Use custom AI Agent
-        self.agent_url = os.getenv("AI_AGENT_URL")
-        self.agent_key = os.getenv("AI_AGENT_KEY")
+    def __init__(self, company_id: int = None, ai_endpoint: str = None, ai_api_key: str = None):
+        # Priority: 1) Provided params 2) .env fallback
+        self.agent_url = ai_endpoint or os.getenv("AI_AGENT_URL")
+        self.agent_key = ai_api_key or os.getenv("AI_AGENT_KEY")
+        self.company_id = company_id
         
         if self.agent_url and self.agent_key:
             self.client = AsyncOpenAI(
                 api_key=self.agent_key, 
                 base_url=self.agent_url + "/api/v1/"
             )
-            print(f"✅ AI Agent configured: {self.agent_url}")
+            source = "DB" if (ai_endpoint and ai_api_key) else ".env"
+            print(f"✅ AI Agent configured from {source}: {self.agent_url[:50]}...")
         else:
             self.client = None
-            print("⚠️ AI Agent not configured - check AI_AGENT_URL and AI_AGENT_KEY")
+            print("⚠️ AI Agent not configured - check company AI settings or .env")
 
     async def get_product_recommendation(self, user_query: str, history: List[Dict[str, str]], product_catalog: List[Dict[str, Any]], system_prompt: str = None, language: str = "ru") -> str:
+        # 🤖 MULTITENANCY LOG для КАЖДОГО запроса
+        source = "DB" if self.company_id else ".env"
+        logging.info(f"🤖 MULTITENANCY AI REQUEST from {source}, company_id={self.company_id}")
+        
         if not self.client:
             return "AI Agent not configured."
         
@@ -102,4 +109,11 @@ class AIService:
             print(f"❌ Summary Error: {e}")
             return f"Ошибка генерации: {str(e)}"
 
+# Default AI service instance (uses .env)
 ai_service = AIService()
+
+def get_ai_service(company_id: int = None, ai_endpoint: str = None, ai_api_key: str = None):
+    """Get AI service instance with company-specific or default settings"""
+    if ai_endpoint and ai_api_key:
+        return AIService(company_id=company_id, ai_endpoint=ai_endpoint, ai_api_key=ai_api_key)
+    return ai_service
