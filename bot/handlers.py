@@ -12,19 +12,17 @@ from keyboards import get_start_keyboard
 
 router = Router()
 
-# Manager Configuration
-MANAGER_CHAT_ID = os.getenv('MANAGER_CHAT_ID')
-
-def is_manager(user_id: int) -> bool:
-    """Check if user is the authorized manager"""
-    if not MANAGER_CHAT_ID:
+def is_manager(user_id: int, bot) -> bool:
+    """Check if user is the authorized manager for this bot's company"""
+    if not hasattr(bot, 'manager_chat_id') or not bot.manager_chat_id:
         return False
-    return str(user_id) == str(MANAGER_CHAT_ID)
+    return str(user_id) == str(bot.manager_chat_id)
 
-async def start_session(user_id: int, new_session: bool = True):
+async def start_session(user_id: int, company_id: int, new_session: bool = True):
+    """Start session for specific company"""
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.post(f'{API_BASE_URL}/sales/1/chat', json={
+            async with session.post(f'{API_BASE_URL}/sales/{company_id}/chat', json={
                 'message': 'start_session',
                 'user_id': str(user_id),
                 'username': f'user_{user_id}',
@@ -42,7 +40,8 @@ async def start_session(user_id: int, new_session: bool = True):
 @router.message(Command('start'))
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.set_state(SalesFlow.qualifying)
-    session_id = await start_session(message.from_user.id)
+    company_id = getattr(message.bot, 'company_id', 1)
+    session_id = await start_session(message.from_user.id, company_id)
     
     if session_id:
         await state.update_data(session_id=session_id)
@@ -102,7 +101,8 @@ async def handle_contact(message: types.Message, state: FSMContext):
     
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.post(f'{API_BASE_URL}/sales/1/chat', json={
+            company_id = getattr(message.bot, 'company_id', 1)
+            async with session.post(f'{API_BASE_URL}/sales/{company_id}/chat', json={
                 'message': phone,
                 'user_id': user_id,
                 'username': username,
@@ -124,7 +124,7 @@ async def handle_contact(message: types.Message, state: FSMContext):
 @router.message(F.voice)
 async def handle_voice(message: types.Message, state: FSMContext):
     # Check if manager - handle separately
-    if is_manager(message.from_user.id):
+    if is_manager(message.from_user.id, message.bot):
         await handle_manager_voice(message)
         return
     
@@ -156,8 +156,9 @@ async def handle_voice(message: types.Message, state: FSMContext):
         data.add_field('user_id', user_id)
         data.add_field('username', username)
         
+        company_id = getattr(message.bot, 'company_id', 1)
         async with aiohttp.ClientSession() as session:
-             async with session.post(f'{API_BASE_URL}/sales/1/voice', data=data) as resp:
+             async with session.post(f'{API_BASE_URL}/sales/{company_id}/voice', data=data) as resp:
                  if resp.status == 200:
                      result = await resp.json()
                      ai_response = result.get('response', '')
@@ -204,8 +205,9 @@ async def handle_manager_voice(message: types.Message):
         data.add_field('user_id', str(message.from_user.id))
         data.add_field('username', 'manager')
         
+        company_id = getattr(message.bot, 'company_id', 1)
         async with aiohttp.ClientSession() as session:
-            async with session.post(f'{API_BASE_URL}/sales/1/voice', data=data) as resp:
+            async with session.post(f'{API_BASE_URL}/sales/{company_id}/voice', data=data) as resp:
                 if resp.status == 200:
                     result = await resp.json()
                     transcribed_text = result.get('text', '')
@@ -241,13 +243,16 @@ async def process_manager_command(message: types.Message, text: str):
     
     # Enhanced status check with real system verification
     if 'статус' in text_lower or 'status' in text_lower:
+        company_id = getattr(message.bot, 'company_id', 1)
+        logging.info(f"🏢 MULTITENANCY: Manager checking status for company {company_id}")
+        
         status_parts = ["📊 <b>Статус системы</b>\n"]
         
         # Check AI Agent (chat endpoint)
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    f'{API_BASE_URL}/sales/1/chat',
+                    f'{API_BASE_URL}/sales/{company_id}/chat',
                     json={'message': 'ping', 'user_id': 'healthcheck'},
                     timeout=aiohttp.ClientTimeout(total=5)
                 ) as resp:
@@ -258,19 +263,22 @@ async def process_manager_command(message: types.Message, text: str):
         except Exception:
             status_parts.append("❌ AI Агент - недоступен")
         
-        status_parts.extend([
-            "🤖 Telegram Bot - активен (polling)",
-            "🌐 Виджет - работает на сайте"
-        ])
+        status_parts.append("🤖 Telegram Bot - активен (polling)")
+        
+        # Widget status - show only if company has widget configured
+        # TODO: Add widget status check from company config
         
         await message.answer('\n'.join(status_parts), parse_mode='HTML')
     
     # View recent leads
     elif 'лиды' in text_lower or 'leads' in text_lower or 'лід' in text_lower:
+        company_id = getattr(message.bot, 'company_id', 1)
+        logging.info(f"🏢 MULTITENANCY: Manager viewing leads for company {company_id}")
+        
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(
-                    f'{API_BASE_URL}/sales/1/leads?limit=10',
+                    f'{API_BASE_URL}/sales/{company_id}/leads?limit=10',
                     timeout=aiohttp.ClientTimeout(total=5)
                 ) as resp:
                     if resp.status == 200:
@@ -342,7 +350,7 @@ async def handle_text(message: types.Message, state: FSMContext):
         return
     
     # Check if manager - handle commands
-    if is_manager(message.from_user.id):
+    if is_manager(message.from_user.id, message.bot):
         await process_manager_command(message, message.text)
         return
 
@@ -356,13 +364,15 @@ async def handle_text(message: types.Message, state: FSMContext):
     session_id = data.get("session_id")
     
     if not session_id:
-        session_id = await start_session(message.from_user.id)
+        company_id = getattr(message.bot, 'company_id', 1)
+        session_id = await start_session(message.from_user.id, company_id)
         if session_id:
             await state.update_data(session_id=session_id)
     
+    company_id = getattr(message.bot, 'company_id', 1)
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.post(f'{API_BASE_URL}/sales/1/chat', json={
+            async with session.post(f'{API_BASE_URL}/sales/{company_id}/chat', json={
                 'message': message.text,
                 'user_id': user_id,
                 'username': username,

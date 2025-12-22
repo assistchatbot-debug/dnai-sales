@@ -34,6 +34,9 @@ async def get_companies_with_bots():
 async def main():
     logging.info("🚀 Starting BizDNAi Multi-Tenant Bot System...")
     
+    # Check for local mode (BOT_TOKEN in .env)
+    local_bot_token = os.getenv('BOT_TOKEN')
+    
     # Load companies from database
     companies = await get_companies_with_bots()
     
@@ -41,6 +44,15 @@ async def main():
         logging.error("❌ No companies with bot tokens found!")
         logging.info("💡 Add bot tokens via SuperAdmin bot")
         return
+    
+    # LOCAL MODE: Filter to only the bot specified in .env
+    if local_bot_token:
+        companies = [c for c in companies if c.get('bot_token') == local_bot_token]
+        if companies:
+            logging.info(f"🔧 LOCAL MODE: Running only {companies[0]['name']}")
+        else:
+            logging.error(f"❌ Bot token from .env not found in database!")
+            return
     
     logging.info(f"📋 Found {len(companies)} companies with bots")
     

@@ -333,7 +333,8 @@ async def sales_chat(request: Request, company_id: int, chat_data: ChatMessage, 
         if extracted_name:
             if not lead.contact_info:
                 lead.contact_info = {}
-            lead.contact_info['name'] = extracted_name
+            if 'name' not in lead.contact_info or not lead.contact_info['name']:
+                lead.contact_info['name'] = extracted_name
             flag_modified(lead, 'contact_info')
             await db.commit()
             logging.info(f'💾 Name saved to DB: {extracted_name}')
