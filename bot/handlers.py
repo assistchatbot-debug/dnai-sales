@@ -254,13 +254,14 @@ async def process_manager_command(message: types.Message, text: str):
                 async with session.post(
                     f'{API_BASE_URL}/sales/{company_id}/chat',
                     json={'message': 'ping', 'user_id': 'healthcheck'},
-                    timeout=aiohttp.ClientTimeout(total=5)
+                    timeout=aiohttp.ClientTimeout(total=10)
                 ) as resp:
                     if resp.status == 200:
                         status_parts.append("✅ AI Агент - работает")
                     else:
                         status_parts.append(f"⚠️ AI Агент - код {resp.status}")
-        except Exception:
+        except Exception as e:
+            logging.error(f"AI status check failed: {e}")
             status_parts.append("❌ AI Агент - недоступен")
         
         status_parts.append("🤖 Telegram Bot - активен (polling)")

@@ -287,54 +287,48 @@ async def sales_chat(request: Request, company_id: int, chat_data: ChatMessage, 
         logging.info(f'💾 Saved: User=\'{chat_data.message[:30]}...\' Bot=\'{ai_response[:30]}...\'')
         
         
-        # Extract name from AI confirmation message (most reliable)
-        import re
+        # Extract name using AI (most reliable method)
         extracted_name = None
-        full_messages = history + [{'sender': 'bot', 'text': ai_response}]
         
-        logging.info(f'🔍 Extracting name from {len(full_messages)} messages')
-        
-        # FIRST: Try to extract from AI confirmation messages (most accurate)
-        for msg in reversed(full_messages):
-            if msg.get('sender') == 'bot':
-                text = msg.get('text', '')
-                # Look for "Вас зовут: Имя" or "зовут: Имя"
-                match = re.search(r'(?:Вас\s+)?зовут[:\s]+([А-ЯЁA-Z][а-яёa-z]+)', text, re.IGNORECASE)
-                if match:
-                    extracted_name = match.group(1).capitalize()
-                    logging.info(f'✨ Found name from AI confirmation: {extracted_name}')
-                    break
-        
-        # SECOND: If no confirmation yet, try user direct answers
-        if not extracted_name:
-            for msg in reversed(full_messages):
-                if msg.get('sender') == 'user':
-                    text = msg.get('text', '').strip()
+        # Only try to extract if we don't have a name yet
+        if not lead.contact_info or not lead.contact_info.get('name'):
+            try:
+                # Build conversation text for AI
+                conversation_text = ""
+                for msg in history[-10:]:  # Last 10 messages
+                    sender = "Клиент" if msg.get('sender') == 'user' else "Бот"
+                    conversation_text += f"{sender}: {msg.get('text', '')}\n"
+                conversation_text += f"Бот: {ai_response}\n"
+                
+                # Ask AI to extract name
+                extract_prompt = f"""Из этого диалога извлеки имя клиента. Ответь ТОЛЬКО именем, без ничего лишнего. Если имя не найдено, ответь: НЕТ
+
+Диалог:
+{conversation_text}
+
+Имя клиента:"""
+                
+                extract_response = await ai_service.get_product_recommendation(
+                    user_query=extract_prompt,
+                    history=[],
+                    product_catalog=[]
+                )
+                
+                # Clean response
+                name_candidate = extract_response.strip().split('\n')[0].strip()
+                
+                if name_candidate and name_candidate.upper() != 'НЕТ' and len(name_candidate) > 1 and len(name_candidate) < 30:
+                    extracted_name = name_candidate.capitalize()
+                    logging.info(f'✨ AI extracted name: {extracted_name}')
                     
-                    # Only simple patterns to avoid false positives
-                    patterns = [
-                        (r'меня зовут\s+([А-ЯЁA-Z][а-яёa-z]+)', 'меня зовут'),
-                        (r'^([А-ЯЁA-Z][а-яёa-z]{2,})$', 'single name')
-                    ]
-                    
-                    for pattern, desc in patterns:
-                        match = re.search(pattern, text)
-                        if match:
-                            candidate = match.group(1).capitalize()
-                            # Strong filter
-                            if len(candidate) > 2 and candidate.lower() not in ['да', 'нет', 'ок', 'уже', 'три', 'раза', 'хорошо', 'спасибо', 'привет']:
-                                extracted_name = candidate
-                                logging.info(f'✨ Found name from user: {extracted_name} via {desc}')
-                                break
-                    
-                    if extracted_name:
-                        break
+            except Exception as e:
+                logging.warning(f'⚠️ AI name extraction failed: {e}')
         
+        # Save name if found
         if extracted_name:
             if not lead.contact_info:
                 lead.contact_info = {}
-            if 'name' not in lead.contact_info or not lead.contact_info['name']:
-                lead.contact_info['name'] = extracted_name
+            lead.contact_info['name'] = extracted_name
             flag_modified(lead, 'contact_info')
             await db.commit()
             logging.info(f'💾 Name saved to DB: {extracted_name}')
