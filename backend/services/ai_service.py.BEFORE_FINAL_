@@ -1,0 +1,77 @@
+from typing import List, Dict, Any
+import os
+from openai import AsyncOpenAI
+
+class AIService:
+    def __init__(self):
+        self.api_key = os.getenv("OPENROUTER_API_KEY")
+        self.model = os.getenv("AI_MODEL")
+        self.base_url = "https://openrouter.ai/api/v1"
+        if not self.model:
+            raise ValueError("AI_MODEL must be set")
+        if self.api_key:
+            self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
+        else:
+            raise ValueError("OPENROUTER_API_KEY must be set")
+
+    async def get_product_recommendation(self, user_query: str, history: List[Dict[str, str]], product_catalog: List[Dict[str, Any]], system_prompt: str = None, language: str = "ru") -> str:
+        if not self.client:
+            return "AI Service not configured."
+        if not system_prompt:
+            system_prompt = f"""Ты - консультант BizDNAi. Мы автоматизируем бизнес с помощью AI.
+
+ЦЕЛЬ: Получить имя и телефон для подключения бесплатного тестового периода.
+
+СТИЛЬ: Вежливый, на Вы, короткие ответы.
+
+ДИАЛОГ:
+
+1. Узнай сферу: "Какую поддержку вы хотели бы получить? Например: Маркетинг, Финансы, Продажи..."
+
+2. Клиент назвал сферу → подтверди что поможем, спроси: "Есть ещё сфера для улучшения?"
+
+3. Клиент сказал нет → "Отлично! Давайте подключим вас к тестовому периоду. Как вас зовут?"
+
+4. Назвал имя → "Приятно познакомиться! Укажите телефон для связи."
+
+5. Дал телефон → "Имя: [имя], Телефон: [телефон]. Всё верно?"
+
+6. Подтвердил → "Спасибо! Менеджер свяжется для подключения тестового периода."
+
+ПРАВИЛА:
+- Если клиент спрашивает что-то - ответь, потом мягко вернись к цели
+- Напоминай про бесплатный тест
+- Используй реальные данные из диалога
+- Один вопрос за раз
+
+Язык: {language}"""
+        messages = [{"role": "system", "content": system_prompt}]
+        for msg in (history[-40:] if len(history) > 40 else history):
+            messages.append({"role": "user" if msg.get("sender") == "user" else "assistant", "content": msg.get("text", "")})
+        messages.append({"role": "user", "content": user_query})
+        try:
+            response = await self.client.chat.completions.create(model=self.model, messages=messages, max_tokens=500, temperature=0.7, extra_headers={"HTTP-Referer": "https://bizdnaii.com"})
+            if not response.choices or not response.choices[0].message:
+                return "Какую поддержку вы хотели бы получить?"
+            answer = response.choices[0].message.content
+            return answer.strip() if answer else "Какую поддержку вы хотели бы получить?"
+        except Exception as e:
+            print(f"AI Error: {e}")
+            return "Какую поддержку вы хотели бы получить?"
+
+    async def generate_conversation_summary(self, history: List[Dict[str, str]], language: str = "ru") -> str:
+        if not self.client or not history:
+            return "Нет данных"
+        prompt = "Краткий отчёт: 1.Интересы 2.Готовность(холодный/тёплый/горячий) 3.Что предложить. 100 слов."
+        messages = [{"role": "system", "content": prompt}]
+        for msg in history[-30:]:
+            messages.append({"role": "user" if msg.get("sender") == "user" else "assistant", "content": msg.get("text", "")})
+        try:
+            response = await self.client.chat.completions.create(model=self.model, messages=messages, max_tokens=800, temperature=0.3)
+            if not response.choices or not response.choices[0].message:
+                return "Ошибка"
+            return response.choices[0].message.content or "Нет данных"
+        except Exception as e:
+            return f"Ошибка: {e}"
+
+ai_service = AIService()

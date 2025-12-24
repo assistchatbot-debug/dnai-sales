@@ -46,7 +46,7 @@ import logging
 import os
 import httpx
 import re
-from services.ai_service import ai_service
+from services.ai_service import ai_service, get_ai_service
 from services.voice_service import voice_service
 from services.telegram_service import telegram_service
 from services.email_service import email_service
@@ -247,7 +247,7 @@ async def sales_chat(request: Request, company_id: int, chat_data: ChatMessage, 
         history = await get_conversation_history(db, lead_id, limit=20)
         
         catalog = []
-        ai_response = await ai_service.get_product_recommendation(
+        # Get company AI settings\n        company_ai_service = ai_service  # Default\n        if company.ai_endpoint and company.ai_api_key:\n            company_ai_service = get_ai_service(\n                company_id=company_id,\n                ai_endpoint=company.ai_endpoint,\n                ai_api_key=company.ai_api_key\n            )\n        \n        ai_response = await company_ai_service.get_product_recommendation(
             user_query=chat_data.message,
             history=history,
             product_catalog=catalog,
@@ -332,47 +332,20 @@ async def sales_chat(request: Request, company_id: int, chat_data: ChatMessage, 
                 await db.commit()
                 logging.info(f'✅ Phone saved: {phone_number}')
         
-        
-        saved_phone = lead.contact_info.get('phone') if lead.contact_info else None
-        
-        # Use AI to detect if user confirmed (works in ANY language!)
-        is_confirmed = False
-        if saved_phone:
-            confirmation_prompt = f"""Пользователь ответил: "{chat_data.message}"
-
-Это положительное подтверждение (да, согласен, верно, ok и т.д.) или отрицание?
-Ответь ОДНИМ словом: ДА или НЕТ"""
-            
-            try:
-                confirm_check = await ai_service.get_product_recommendation(
-                    user_query=confirmation_prompt,
-                    history=[],
-                    product_catalog=[]
-                )
-                is_confirmed = 'да' in confirm_check.lower() or 'yes' in confirm_check.lower()
-                logging.info(f'🤖 AI confirmation check: "{chat_data.message}" → {confirm_check} → {is_confirmed}')
-            except Exception as e:
-                logging.error(f'❌ AI confirmation check failed: {e}')
-                # Fallback to simple keywords for critical cases
-                simple_confirms = ['да', 'yes', 'ок', 'ok', '+', '👍']
-                is_confirmed = any(w in chat_data.message.lower() for w in simple_confirms)
+        # Check for confirmation words ONLY if we have phone and name
+        confirm_words = ['да', 'верно', 'правильно', 'yes', 'подтверждаю', 'ок', 'ok']
+        is_confirmed = any(w in chat_data.message.lower() for w in confirm_words)
         
         # Check if bot asked for confirmation in recent messages
-        # More robust: check if bot message contains both phone and name (confirmation pattern)
         has_confirm_q = False
         for msg in history[-3:]:
             if msg.get('sender') == 'bot':
                 bot_text = msg.get('text', '').lower()
-                # Check for multilingual confirmation keywords
-                confirm_keywords = ['верно', 'правильно', 'подтвердите', 'correct', 'confirm', 
-                                   'дұрыс', 'рас', 'туура', 'to\'g\'ri', 'вірно']  # KZ, KG, UZ, UA
-                # OR check if message contains phone pattern (summary message)
-                has_keyword = any(kw in bot_text for kw in confirm_keywords)
-                has_phone_pattern = bool(re.search(r'\+?\d[\d\s()-]{7,}', bot_text))
-                
-                if has_keyword or has_phone_pattern:
+                if 'верно' in bot_text or 'правильно' in bot_text or 'подтвердите' in bot_text or 'correct' in bot_text or 'confirm' in bot_text:
                     has_confirm_q = True
                     break
+        
+        saved_phone = lead.contact_info.get('phone') if lead.contact_info else None
         
         # DEBUG: Log confirmation conditions
         logging.info(f'🔍 Confirm check: phone={saved_phone}, confirmed={is_confirmed}, has_q={has_confirm_q}, status={lead.status}')
@@ -390,7 +363,7 @@ async def sales_chat(request: Request, company_id: int, chat_data: ChatMessage, 
                 {'sender': 'bot', 'text': ai_response}
             ]
             
-            summary = await ai_service.generate_conversation_summary(full_history, language)
+            summary = await company_ai_service.generate_conversation_summary(full_history, language)
             
             # Extract temperature from summary
             import re
@@ -526,20 +499,6 @@ async def upsert_company(data: dict, db: AsyncSession = Depends(get_db)):
         company.description = data['description']
     if 'logo_url' in data:
         company.logo_url = data['logo_url']
-    
-    # Multitenancy fields
-    if 'bot_token' in data:
-        company.bot_token = data['bot_token']
-        logging.info(f'🔐 Updated bot_token for company {company_id}')
-    if 'manager_chat_id' in data:
-        company.manager_chat_id = data['manager_chat_id']
-        logging.info(f'👤 Updated manager_chat_id for company {company_id}: {data["manager_chat_id"]}')
-    if 'ai_endpoint' in data:
-        company.ai_endpoint = data['ai_endpoint']
-        logging.info(f'🤖 Updated ai_endpoint for company {company_id}')
-    if 'ai_api_key' in data:
-        company.ai_api_key = data['ai_api_key']
-        logging.info(f'🔑 Updated ai_api_key for company {company_id}')
     
     await db.commit()
     await db.refresh(company)
@@ -726,28 +685,6 @@ async def set_widget_enabled(company_id: int, enabled: bool = True):
     logging.info(f'Widget for company {company_id} set to: {enabled}')
     return {'enabled': enabled, 'company_id': company_id}
 
-@router.get('/{company_id}/company-info')
-async def get_company_info(company_id: int, db: AsyncSession = Depends(get_db)):
-    """Get company information for widget (logo, name, etc.)"""
-    result = await db.execute(select(Company).where(Company.id == company_id))
-    company = result.scalars().first()
-    
-    if not company:
-        logging.warning(f'⚠️ Company {company_id} not found, returning defaults')
-        return {
-            'logo_url': 'https://bizdnai.com/logo.png',
-            'company_name': 'BizDNAi',
-            'description': None
-        }
-    
-    logging.info(f'✅ Company info loaded from DB: logo={company.logo_url}, name={company.name}')
-    
-    return {
-        'logo_url': company.logo_url or 'https://bizdnai.com/logo.png',
-        'company_name': company.name or 'BizDNAi',
-        'description': company.description
-    }
-
 @router.get('/health/db')
 async def check_db_health(db: AsyncSession = Depends(get_db)):
     """Check database connection"""
@@ -825,9 +762,7 @@ async def get_all_companies(db: AsyncSession = Depends(get_db)):
             'description': c.description,
             'logo_url': c.logo_url,
             'bot_token': c.bot_token,
-            'manager_chat_id': c.manager_chat_id,
-            'ai_endpoint': c.ai_endpoint,
-            'ai_api_key': c.ai_api_key
+            'manager_chat_id': c.manager_chat_id
         } for c in companies]
     except Exception as e:
         logging.error(f'Get all companies error: {e}')

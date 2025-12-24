@@ -1,0 +1,250 @@
+from typing import List, Dict, Any
+import os
+from openai import AsyncOpenAI
+
+class AIService:
+    def __init__(self):
+        self.api_key = os.getenv("OPENROUTER_API_KEY")
+        self.model = os.getenv("AI_MODEL", "openai/gpt-oss-120b:exacto")
+        self.base_url = "https://openrouter.ai/api/v1"
+        
+        if self.api_key:
+            self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
+        else:
+            self.client = None
+            print("Warning: OPENROUTER_API_KEY not set.")
+
+    async def get_product_recommendation(
+        self, 
+        user_query: str, 
+        history: List[Dict[str, str]], 
+        product_catalog: List[Dict[str, Any]],
+        system_prompt: str = None,
+        language: str = "ru",
+        lead_name: str = None,
+        lead_phone: str = None
+    ) -> str:
+
+        if not system_prompt:
+            # Lead context
+            lead_info = f"""
+СОБРАННЫЕ ДАННЫЕ:
+- Имя: {lead_name if lead_name else "нет"}
+- Телефон: {lead_phone if lead_phone else "нет"}
+"""
+            
+            print(f"🔍 AI Context: name={lead_name}, phone={lead_phone}")
+            
+            system_prompt = f"""{lead_info}
+
+Ты — AI помощник компании BizDNAi.
+
+О КОМПАНИИ: Мы внедряем AI решения для автоматизации бизнес-процессов (CRM, чат-боты, голосовые помощники, аналитика).
+
+СТРАТЕГИЯ:
+1. ПЕРВЫЙ КОНТАКТ: "Добрый день! Какая сфера требует автоматизации?"
+2. КЛИЕНТ НАЗВАЛ СФЕРУ: "Отлично! Хотите ли улучшить еще что-то? Например, продажи или финансы."
+3. КЛИЕНТ СКАЗАЛ "НЕТ":
+   - Если НЕТ имени: "Как к вам обращаться?"
+   - Если есть имя, НЕТ телефона: "Укажите номер телефона для связи [REQUEST_CONTACT]"
+
+ПРАВИЛА:
+- Ответы КРАТКИЕ (1-2 предложения)
+- Если ОБА контакта собраны → покажи "Проверьте данные: Имя: [имя], Телефон: [телефон]. Всё верно?"
+- Если спрашивают о компании - отвечай кратко о нас
+- [REQUEST_CONTACT] добавляй только при запросе телефона
+- НЕ спрашивай контакты которые УЖЕ есть
+- После подтверждения данных ("да") → система автоматически завершит диалог
+
+ЯЗЫК: {language}"""
+
+        messages = [{"role": "system", "content": system_prompt}]
+        
+        recent_history = history[-30:] if len(history) > 30 else history
+        
+        for msg in recent_history:
+            role = "user" if msg.get("sender") == "user" else "assistant"
+            messages.append({"role": role, "content": msg.get("text", "")})
+            
+        messages.append({"role": "user", "content": user_query})
+
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                max_tokens=500,
+                temperature=0.3,
+                extra_headers={
+                    "HTTP-Referer": "https://bizdnaii.com",
+                    "X-Title": "BizDNAii Sales Agent"
+                }
+            )
+            
+            answer = response.choices[0].message.content
+            
+            if not answer or answer.strip() == "":
+                return "Добрый день! Подскажите, какая сфера деятельности требует систематизации?"
+            
+            return answer.strip().replace('\\n', '\n')
+            
+        except Exception as e:
+            print(f"Error calling AI: {e}")
+            return "Добрый день! Расскажите о вашем бизнесе."
+
+    async def generate_conversation_summary(self, history: List[Dict[str, str]], language: str = "ru") -> str:
+        if not self.client or not history:
+            return "Нет данных"
+
+        summary_prompt = """Проанализируй диалог и составь подробный отчет для менеджера.
+Игнорируй последние технические сообщения (спасибо, номер получен).
+Фокусируйся на сути запросов клиента.
+
+СТРУКТУРА ОТЧЕТА:
+1. **Интересы клиента** (перечисли все названные сферы)
+2. **Готовность** (Холодный/Теплый/Горячий - объясни почему)
+3. **Боли/Задачи** (что именно хочет автоматизировать)
+4. **Рекомендация** (какие продукты предложить, стратегия звонка)
+
+Объем: 150-200 слов. Используй Markdown."""
+
+        messages = [{"role": "system", "content": summary_prompt}]
+        
+        for msg in history:
+            role = "user" if msg.get("sender") == "user" else "assistant"
+            messages.append({"role": role, "content": msg.get("text", "")})
+
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                max_tokens=1000,
+                temperature=0.3
+            )
+            return response.choices[0].message.content or "Нет данных"
+        except:
+            return "Ошибка генерации сводки"
+
+    async def extract_contact_info(self, history: List[Dict[str, str]]) -> Dict[str, str]:
+        """
+        Extracts Name and Phone from conversation history using LLM.
+        Returns dict with 'name' and 'phone' keys (values can be None).
+        """
+        if not self.client or not history:
+            return {"name": None, "phone": None}
+
+        extraction_prompt = """Analyze the conversation and extract the user's Name and Phone number.
+        
+        Rules:
+        1. Name: Look for self-introduction or response to "What is your name?".
+        2. Phone: Look for 10-12 digit number (ignoring spaces/dashes).
+        3. Output JSON ONLY: {"name": "...", "phone": "..."}
+        4. If missing, use null.
+        """
+
+        messages = [{"role": "system", "content": extraction_prompt}]
+        
+        # Use last 10 messages for context
+        for msg in history[-10:]:
+            role = "user" if msg.get("sender") == "user" else "assistant"
+            messages.append({"role": role, "content": msg.get("text", "")})
+
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                max_tokens=100,
+                temperature=0.1,
+                response_format={"type": "json_object"}
+            )
+            import json
+            content = response.choices[0].message.content
+            # Cleanup json markdown if present
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0]
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0]
+                
+            data = json.loads(content)
+            return {
+                "name": data.get("name"), 
+                "phone": data.get("phone")
+            }
+        except Exception as e:
+            print(f"Extraction error: {e}")
+            return {"name": None, "phone": None}
+
+    async def process_manager_command(self, command: str) -> str:
+        """
+        Process text command from manager and generate intelligent response.
+        Handles commands like: status check, reports, analytics, help, etc.
+        """
+        if not self.client:
+            return "⚠️ AI сервис не настроен (отсутствует OPENROUTER_API_KEY)"
+        
+        system_prompt = """Ты — AI ассистент для управления системой BizDNAi Sales Agent.
+
+Руководитель может задать тебе команды на русском или английском языке.
+
+ДОСТУПНЫЕ КОМАНДЫ:
+- Статус системы / проверка работы
+- Информация о лидах и отчетах
+- Помощь по командам
+- Общие вопросы о боте
+
+СТИЛЬ ОТВЕТА:
+- Профессиональный и краткий
+- Используй эмодзи для наглядности
+- Форматируй текст с помощью HTML тегов Telegram (<b>, <i>, <code>)
+- Отвечай на том языке, на котором задан вопрос
+
+ПРИМЕРЫ ОТВЕТОВ:
+
+Q: "Статус"
+A: "✅ <b>Система работает</b>
+
+🤖 AI агент активен
+📱 Telegram уведомления включены
+📧 Email уведомления настроены
+🌐 Веб-виджет доступен
+
+Все системы функционируют нормально!"
+
+Q: "Помощь"
+A: "📋 <b>Доступные команды:</b>
+
+<b>Статус</b> - проверка работы системы
+<b>Отчеты</b> - информация о лидах
+<b>Помощь</b> - список команд
+
+Можешь также задать любой вопрос о работе бота!"
+"""
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": command}
+        ]
+
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                max_tokens=500,
+                temperature=0.7,
+                extra_headers={
+                    "HTTP-Referer": "https://bizdnaii.com",
+                    "X-Title": "BizDNAii Manager Assistant"
+                }
+            )
+            
+            answer = response.choices[0].message.content
+            
+            if not answer or answer.strip() == "":
+                return "👋 Привет! Чем могу помочь?"
+            
+            return answer.strip()
+            
+        except Exception as e:
+            print(f"Error processing manager command: {e}")
+            return f"❌ Ошибка обработки команды: {str(e)}"
+
+ai_service = AIService()
