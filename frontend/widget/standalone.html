@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BizDNAi Chat</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; padding: 0; }
+        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+        .recording { background: #ef4444 !important; animation: pulse 1.5s infinite; }
+        .sticky-logo { position: sticky; top: 20px; z-index: 50; background: rgba(99, 102, 241, 0.8); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-indigo-500 to-purple-600 min-h-screen p-4">
+    <div class="flex flex-col items-center min-h-screen gap-6 pt-8">
+        <div class="sticky-logo w-40 h-40 rounded-full shadow-2xl flex items-center justify-center">
+            <img id="mainLogo" src="https://bizdnai.com/logo.png" class="w-32 h-32 rounded-full bg-white p-2">
+        </div>
+        <div class="text-center -mt-6">
+            <h1 id="companyName" class="text-3xl font-bold text-white mb-2">BizDNAi</h1>
+            <p id="companyDesc" class="text-white/90 text-lg max-w-md mx-auto mb-8"></p>
+        </div>
+        <div class="w-full max-w-md h-[600px] bg-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-700 mb-8">
+            <div class="bg-indigo-600 p-3">
+                <div class="flex justify-between items-center mb-2">
+                    <div class="flex items-center gap-2">
+                        <img id="logo" src="https://bizdnai.com/logo.png" class="w-8 h-8 rounded-full" alt="Logo">
+                        <div>
+                            <h3 id="headerName" class="font-bold text-sm text-white">BizDNAi</h3>
+                            <span class="text-xs text-green-300 flex items-center gap-1">● Online</span>
+                        </div>
+                    </div>
+                    <button onclick="resetChat()" class="hover:bg-white/10 p-1 rounded text-white text-lg">🔄</button>
+                </div>
+                <select id="langSelect" class="w-full p-2 rounded-lg bg-indigo-500/20 border border-indigo-400/40 text-white text-sm">
+                    <option value="ru">🇷🇺 Русский</option>
+                    <option value="en">🇺🇸 English</option>
+                    <option value="kz">🇰🇿 Қазақша</option>
+                    <option value="kg">🇰🇬 Кыргызча</option>
+                    <option value="uz">🇺🇿 O'zbekcha</option>
+                    <option value="ua">🇺🇦 Українська</option>
+                </select>
+            </div>
+            <div id="messages" class="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-800"></div>
+            <div id="typing" class="hidden px-4 py-2"><div class="flex gap-1 items-center"><div class="w-2 h-2 bg-indigo-400 rounded-full animate-bounce"></div><div class="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style="animation-delay: 0.2s"></div><div class="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style="animation-delay: 0.4s"></div></div></div>
+            <div class="p-3 bg-slate-900 border-t border-slate-700"><div class="flex gap-2 items-end"><textarea id="input" placeholder="Сообщение..." rows="1" class="flex-1 bg-slate-700 text-white rounded-2xl px-4 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea><button id="voiceBtn" class="flex-shrink-0 w-10 h-10 rounded-full bg-slate-700 hover:bg-slate-600 flex items-center justify-center text-white transition-colors touch-none">🎤</button><button onclick="sendMsg()" class="flex-shrink-0 w-10 h-10 rounded-full bg-indigo-600 hover:bg-indigo-500 flex items-center justify-center text-white transition-colors">➤</button></div></div>
+        </div>
+    </div>
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const companyId = urlParams.get('company') || '1';
+        const API = `/sales/${companyId}`;
+        let sessionId = null;
+        const langMap = { ru: 'ru', en: 'en', kz: 'kk', kg: 'ky', uz: 'uz', ua: 'uk' };
+        const greetings = { ru: 'Здравствуйте!\nЯ умный помощник BizDNAi.\n\nАвтоматизация бизнеса: Маркетинг, Финансы, Продажи...', en: 'Hello!\nI am the smart assistant of BizDNAi.\n\nBusiness automation: Marketing, Finance, Sales...', kz: 'Сәлеметсіз бе!\nМен BizDNAi ақылды көмекшісімін.\n\nБизнесті автоматтандыру: Маркетинг, Қаржы, Сату...', kg: 'Саламатсызбы!\nМен BizDNAi акылдуу жардамчысымын.\n\nБизнести автоматташтыруу: Маркетинг, Финансы, Сатуу...', uz: 'Salom!\nMen BizDNAi aqlli yordamchisiman.\n\nBiznesni avtomatlashtirish: Marketing, Moliya, Sotish...', ua: 'Вітаю!\nЯ розумний помічник BizDNAi.\n\nАвтоматизація бізнесу: Маркетинг, Фінанси, Продажі...' };
+        
+        fetch(`${API}/company-info`).then(r => r.json()).then(data => {
+            console.log('Company data:', data);
+            if (data.logo_url) { mainLogo.src = data.logo_url; logo.src = data.logo_url; }
+            if (data.company_name) { companyName.textContent = data.company_name; headerName.textContent = data.company_name; }
+            if (data.description) companyDesc.textContent = data.description;
+            else companyDesc.textContent = '⚠️ Добавьте описание через SuperAdmin бота';
+        }).catch(e => { console.error('Load failed:', e); companyDesc.textContent = '⚠️ Ошибка загрузки данных'; });
+        
+        function addMsg(text, isUser) { const div = document.createElement('div'); div.className = `flex ${isUser ? 'justify-end' : 'justify-start'}`; div.innerHTML = `<div class="max-w-[80%] px-4 py-2 rounded-2xl whitespace-pre-line ${isUser ? 'bg-indigo-600 text-white' : 'bg-slate-700 text-white'}">${text}</div>`; messages.appendChild(div); messages.scrollTop = messages.scrollHeight; }
+        async function sendMsg() { const text = input.value.trim(); if (!text) return; addMsg(text, true); input.value = ''; typing.classList.remove('hidden'); try { const res = await fetch(`${API}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text, session_id: sessionId, user_id: 'standalone_' + Date.now(), language: langMap[langSelect.value] || 'ru' }) }); const data = await res.json(); if (data.session_id) sessionId = data.session_id; addMsg(data.response, false); } catch (e) { addMsg('❌ Ошибка связи', false); } finally { typing.classList.add('hidden'); } }
+        function resetChat() { sessionId = null; messages.innerHTML = ''; addMsg(greetings[langSelect.value] || greetings.ru, false); }
+        let mediaRecorder, audioChunks, isRecording = false;
+        voiceBtn.addEventListener('pointerdown', async (e) => { e.preventDefault(); if (isRecording) return; try { const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); mediaRecorder = new MediaRecorder(stream); audioChunks = []; isRecording = true; mediaRecorder.ondataavailable = e => audioChunks.push(e.data); mediaRecorder.onstop = async () => { const blob = new Blob(audioChunks, { type: 'audio/webm' }); const formData = new FormData(); formData.append('file', blob, 'voice.webm'); formData.append('session_id', sessionId || 'new'); formData.append('user_id', 'standalone_' + Date.now()); formData.append('language', langMap[langSelect.value] || 'ru'); addMsg('🎤 Голосовое...', true); typing.classList.remove('hidden'); try { const res = await fetch(`${API}/voice`, { method: 'POST', body: formData }); const data = await res.json(); if (data.text) { const msgs = messages.querySelectorAll('.flex.justify-end'); msgs[msgs.length - 1].querySelector('div').textContent = '🗣 ' + data.text; } if (data.response) addMsg(data.response, false); } catch (e) { addMsg('❌ Ошибка голоса', false); } finally { typing.classList.add('hidden'); } stream.getTracks().forEach(t => t.stop()); isRecording = false; }; mediaRecorder.start(); voiceBtn.classList.add('recording'); } catch (e) { addMsg('❌ Микрофон недоступен', false); isRecording = false; } });
+        voiceBtn.addEventListener('pointerup', (e) => { e.preventDefault(); if (mediaRecorder && mediaRecorder.state === 'recording') { mediaRecorder.stop(); voiceBtn.classList.remove('recording'); } });
+        voiceBtn.addEventListener('pointercancel', (e) => { if (mediaRecorder && mediaRecorder.state === 'recording') { mediaRecorder.stop(); voiceBtn.classList.remove('recording'); } });
+        input.addEventListener('keypress', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); } });
+        langSelect.addEventListener('change', resetChat);
+        resetChat();
+    </script>
+</body>
+</html>
