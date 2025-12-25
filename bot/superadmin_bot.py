@@ -9,10 +9,8 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 logging.basicConfig(level=logging.INFO)
-
 API_BASE_URL = 'http://localhost:8005'
 
-# Token from .env
 TOKEN = os.getenv('SUPER_ADMIN_CHAT_ID', '').strip()
 if not TOKEN or ':' not in TOKEN:
     try:
@@ -21,8 +19,7 @@ if not TOKEN or ':' not in TOKEN:
                 if line.startswith('SUPER_ADMIN_CHAT_ID='):
                     TOKEN = line.split('=', 1)[1].strip()
                     break
-    except:
-        pass
+    except: pass
 
 if not TOKEN or ':' not in TOKEN:
     print("❌ No valid token found")
@@ -31,7 +28,6 @@ if not TOKEN or ':' not in TOKEN:
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# === FSM States ===
 class CompanyFlow(StatesGroup):
     viewing_list = State()
     selecting_for_edit = State()
@@ -44,10 +40,8 @@ class CompanyFlow(StatesGroup):
     editing_logo = State()
     editing_bot_token = State()
     editing_manager_chat_id = State()
-    editing_ai_endpoint = State()  # Step 10
-    editing_ai_api_key = State()    # Step 11
-    
-    # Tier management states
+    editing_ai_endpoint = State()
+    editing_ai_api_key = State()
     selecting_company_for_tier = State()
     selecting_tier = State()
     entering_tier_days = State()
@@ -55,67 +49,57 @@ class CompanyFlow(StatesGroup):
     entering_extend_days = State()
 
 def get_main_keyboard():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="📊 Компании"), KeyboardButton(text="📈 Лиды")],
-            [KeyboardButton(text="⚙️ Статус")]
-        ],
-        resize_keyboard=True
-    )
+    return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📊 Компании"), KeyboardButton(text="📈 Лиды")],[KeyboardButton(text="⚙️ Статус"), KeyboardButton(text="🏠 Меню")]], resize_keyboard=True)
 
 def get_company_menu_keyboard():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="➕ Создать компанию"), KeyboardButton(text="✏️ Редактировать компанию")],
-            [KeyboardButton(text="📋 Список компаний")],
-            [KeyboardButton(text="🎯 Установить тариф"), KeyboardButton(text="⏰ Продлить тариф")],
-            [KeyboardButton(text="◀️ Назад")]
-        ],
-        resize_keyboard=True
-    )
+    return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="➕ Создать компанию"), KeyboardButton(text="✏️ Редактировать компанию")],[KeyboardButton(text="📋 Список компаний")],[KeyboardButton(text="🎯 Установить тариф"), KeyboardButton(text="⏰ Продлить тариф")],[KeyboardButton(text="◀️ Назад")]], resize_keyboard=True)
+
+def get_temp_icon(temp):
+    t = str(temp).lower()
+    if 'hot' in t or 'горяч' in t or '🔥' in t:
+        return '🔥'
+    elif 'warm' in t or 'тепл' in t or '🌤' in t:
+        return '🌤'
+    else:
+        return '❄️'
 
 @dp.message(Command('start'))
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
-    await message.answer(
-        "🔐 <b>SuperAdmin Panel</b>\n\nВыберите действие:",
-        parse_mode='HTML',
-        reply_markup=get_main_keyboard()
-    )
+    await message.answer("🔐 <b>SuperAdmin Panel</b>\n\nВыберите действие:", parse_mode='HTML', reply_markup=get_main_keyboard())
 
-# === Companies List ===
+@dp.message(F.text == "◀️ Назад")
+async def btn_back_global(message: types.Message, state: FSMContext):
+    await state.clear()
+    await message.answer("Главное меню:", reply_markup=get_main_keyboard())
+
+@dp.message(F.text == "📋 Список компаний")
+async def btn_list_companies(message: types.Message, state: FSMContext):
+    await state.clear()
+    await btn_companies(message, state)
+
 @dp.message(F.text == "📊 Компании")
 async def btn_companies(message: types.Message, state: FSMContext):
-    """Show all companies"""
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(f'{API_BASE_URL}/sales/companies/all', timeout=aiohttp.ClientTimeout(total=5)) as resp:
                 if resp.status == 200:
                     companies = await resp.json()
-                    
                     if not companies:
-                        text = "🏢 <b>Компании:</b>\n\nНет компаний в системе."
+                        text = "🏢 <b>Компании:</b>\n\nНет компаний."
                     else:
                         text = "🏢 <b>Компании:</b>\n\n"
                         for c in sorted(companies, key=lambda x: x.get('id', 0)):
                             cid = c.get('id', '?')
                             name = c.get('name', 'Без названия')
-                            email = c.get('email', 'нет')
                             has_bot = '🤖' if c.get('bot_token') else '❌'
-                            text += f"<b>ID: {cid}</b> — {name} {has_bot}\n   📧 {email}\n\n"
-                    
+                            tier = c.get('tier', 'free')
+                            tier_icon = '💎' if tier != 'free' else '🆓'
+                            text += f"<b>ID: {cid}</b> — {name} {has_bot} {tier_icon}{tier}\n"
                     await message.answer(text, parse_mode='HTML', reply_markup=get_company_menu_keyboard())
                     await state.set_state(CompanyFlow.viewing_list)
-                else:
-                    await message.answer("⚠️ Ошибка загрузки компаний", reply_markup=get_main_keyboard())
     except Exception as e:
-        logging.error(f"Companies list error: {e}")
         await message.answer(f"❌ Ошибка: {str(e)[:50]}", reply_markup=get_main_keyboard())
-
-@dp.message(CompanyFlow.viewing_list, F.text == "◀️ Назад")
-async def back_to_main(message: types.Message, state: FSMContext):
-    await state.clear()
-    await message.answer("Главное меню:", reply_markup=get_main_keyboard())
 
 @dp.message(CompanyFlow.viewing_list, F.text == "➕ Создать компанию")
 async def start_create_company(message: types.Message, state: FSMContext):
@@ -133,347 +117,370 @@ async def select_company_for_edit(message: types.Message, state: FSMContext):
     try:
         company_id = int(message.text)
     except:
-        await message.answer("❌ Неверный ID. Введите число:")
+        await message.answer("❌ Неверный ID")
         return
-    
     async with aiohttp.ClientSession() as session:
         try:
-            # Use /companies/all to get ALL fields including sensitive ones
             async with session.get(f'{API_BASE_URL}/sales/companies/all') as resp:
                 if resp.status == 200:
                     companies = await resp.json()
                     company = next((c for c in companies if c['id'] == company_id), None)
-                    
                     if not company:
-                        await message.answer("❌ Компания не найдена", reply_markup=get_main_keyboard())
+                        await message.answer("❌ Не найдена", reply_markup=get_main_keyboard())
                         await state.clear()
                         return
-                    
-                    await state.update_data(
-                        id=company_id,
-                        name=company.get('name'),
-                        bin_iin=company.get('bin_iin'),
-                        phone=company.get('phone'),
-                        whatsapp=company.get('whatsapp'),
-                        email=company.get('email'),
-                        description=company.get('description'),
-                        logo_url=company.get('logo_url'),
-                        bot_token=company.get('bot_token'),
-                        manager_chat_id=company.get('manager_chat_id'),
-                        ai_endpoint=company.get('ai_endpoint'),
-                        ai_api_key=company.get('ai_api_key')
-                    )
-                    
+                    await state.update_data(id=company_id, name=company.get('name'), bin_iin=company.get('bin_iin'), phone=company.get('phone'), whatsapp=company.get('whatsapp'), email=company.get('email'), description=company.get('description'), logo_url=company.get('logo_url'), bot_token=company.get('bot_token'), manager_chat_id=company.get('manager_chat_id'), ai_endpoint=company.get('ai_endpoint'), ai_api_key=company.get('ai_api_key'))
                     await state.set_state(CompanyFlow.editing_name)
-                    await message.answer(
-                        f"📝 <b>Шаг 1/11: Название</b>\n\n"
-                        f"<i>Текущее:</i> {company.get('name') or 'не указано'}\n\n"
-                        f"Введите новое или '.' чтобы оставить:",
-                        parse_mode='HTML'
-                    )
-                else:
-                    await message.answer("❌ Компания не найдена", reply_markup=get_main_keyboard())
-                    await state.clear()
-        except Exception as e:
-            logging.error(f"Get company error: {e}")
-            await message.answer("❌ Ошибка подключения", reply_markup=get_main_keyboard())
+                    await message.answer(f"📝 <b>Шаг 1/11: Название</b>\n\n<i>Текущее:</i> {company.get('name') or 'нет'}\n\nВведите новое или '.':", parse_mode='HTML')
+        except:
+            await message.answer("❌ Ошибка", reply_markup=get_main_keyboard())
             await state.clear()
 
-# Steps 1-7 (same as before)
 @dp.message(CompanyFlow.editing_name)
 async def process_name(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    if message.text != '.':
-        await state.update_data(name=message.text)
+    if message.text != '.': await state.update_data(name=message.text)
     await state.set_state(CompanyFlow.editing_bin)
-    await message.answer(f"🔢 <b>Шаг 2/11: ИИН/БИН</b>\n\n<i>Текущее:</i> {data.get('bin_iin') or 'не указано'}\n\nВведите или '.':", parse_mode='HTML')
+    await message.answer(f"🔢 <b>Шаг 2/11: ИИН/БИН</b>\n\n<i>Текущее:</i> {data.get('bin_iin') or 'нет'}\n\nВведите или '.':", parse_mode='HTML')
 
 @dp.message(CompanyFlow.editing_bin)
 async def process_bin(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    if message.text != '.':
-        await state.update_data(bin_iin=message.text)
+    if message.text != '.': await state.update_data(bin_iin=message.text)
     await state.set_state(CompanyFlow.editing_phone)
-    await message.answer(f"📱 <b>Шаг 3/11: Телефон</b>\n\n<i>Текущий:</i> {data.get('phone') or 'не указано'}\n\nВведите или '.':", parse_mode='HTML')
+    await message.answer(f"📱 <b>Шаг 3/11: Телефон</b>\n\n<i>Текущий:</i> {data.get('phone') or 'нет'}\n\nВведите или '.':", parse_mode='HTML')
 
 @dp.message(CompanyFlow.editing_phone)
 async def process_phone(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    if message.text != '.':
-        await state.update_data(phone=message.text)
+    if message.text != '.': await state.update_data(phone=message.text)
     await state.set_state(CompanyFlow.editing_whatsapp)
-    await message.answer(f"💬 <b>Шаг 4/11: WhatsApp</b>\n\n<i>Текущий:</i> {data.get('whatsapp') or 'не указано'}\n\nВведите или '.':", parse_mode='HTML')
+    await message.answer(f"💬 <b>Шаг 4/11: WhatsApp</b>\n\n<i>Текущий:</i> {data.get('whatsapp') or 'нет'}\n\nВведите или '.':", parse_mode='HTML')
 
 @dp.message(CompanyFlow.editing_whatsapp)
 async def process_whatsapp(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    if message.text != '.':
-        await state.update_data(whatsapp=message.text)
+    if message.text != '.': await state.update_data(whatsapp=message.text)
     await state.set_state(CompanyFlow.editing_email)
-    await message.answer(f"📧 <b>Шаг 5/11: Email</b>\n\n<i>Текущий:</i> {data.get('email') or 'не указано'}\n\nВведите или '.':", parse_mode='HTML')
+    await message.answer(f"📧 <b>Шаг 5/11: Email</b>\n\n<i>Текущий:</i> {data.get('email') or 'нет'}\n\nВведите или '.':", parse_mode='HTML')
 
 @dp.message(CompanyFlow.editing_email)
 async def process_email(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    if message.text != '.':
-        await state.update_data(email=message.text)
+    if message.text != '.': await state.update_data(email=message.text)
     await state.set_state(CompanyFlow.editing_description)
-    desc = data.get('description') or 'не указано'
-    await message.answer(f"📄 <b>Шаг 6/11: Описание</b>\n\n<i>Текущее:</i> {desc[:50]}...\n\nВведите или '.':", parse_mode='HTML')
+    await message.answer(f"📄 <b>Шаг 6/11: Описание</b>\n\n<i>Текущее:</i> {(data.get('description') or 'нет')[:50]}...\n\nВведите или '.':", parse_mode='HTML')
 
 @dp.message(CompanyFlow.editing_description)
 async def process_description(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    if message.text != '.':
-        await state.update_data(description=message.text)
+    if message.text != '.': await state.update_data(description=message.text)
     await state.set_state(CompanyFlow.editing_logo)
-    await message.answer(f"📷 <b>Шаг 7/11: Логотип</b>\n\n<i>Текущий:</i> {data.get('logo_url') or 'нет'}\n\n<b>Отправьте:</b>\n• Фото (будет сжато в JPG)\n• Документ для PNG без потери качества\n• '.' чтобы пропустить", parse_mode='HTML')
+    await message.answer(f"📷 <b>Шаг 7/11: Логотип</b>\n\nОтправьте фото/документ или '.':", parse_mode='HTML')
 
 @dp.message(CompanyFlow.editing_logo)
 async def process_logo(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    logging.info(f"📷 Logo handler called: photo={bool(message.photo)}, doc={bool(message.document)}, text={message.text}")
-    
-    # Accept both photos and documents for logo upload
     if message.photo or message.document:
-        if message.photo:
-            # Photo - Telegram compresses to JPG
-            photo = message.photo[-1]
-            file = await bot.get_file(photo.file_id)
-            file_data = await bot.download_file(file.file_path)
-            
-            # Telegram photos are usually JPG
-            ext, content_type = ('jpg', 'image/jpeg')
-            filename = f'logo.{ext}'
-            quality_note = " (сжато Telegram)"
-            logging.info(f"📸 Photo received: {ext}")
-            
-        elif message.document:
-            # Document - preserves original format!
-            doc = message.document
-            file = await bot.get_file(doc.file_id)
-            file_data = await bot.download_file(file.file_path)
-            
-            logging.info(f"📎 Document received: mime={doc.mime_type}, name={doc.file_name}")
-            
-            # Detect format from filename or MIME type
-            mime_to_ext = {
-                'image/jpeg': ('jpg', 'image/jpeg'),
-                'image/jpg': ('jpg', 'image/jpeg'),
-                'image/png': ('png', 'image/png'),
-                'image/webp': ('webp', 'image/webp'),
-                'image/gif': ('gif', 'image/gif')
-            }
-            
-            # Try MIME type first, then filename extension
-            ext, content_type = mime_to_ext.get(doc.mime_type, (None, None))
-            
-            if not ext and doc.file_name:
-                file_ext = doc.file_name.split('.')[-1].lower()
-                ext, content_type = mime_to_ext.get(f'image/{file_ext}', ('png', 'image/png'))
-            
-            if not ext:
-                ext, content_type = ('png', 'image/png')  # Default
-            
-            filename = f'logo.{ext}'
-            quality_note = f" (оригинал {ext.upper()})"
-            logging.info(f"✅ Format detected: {ext}, content-type: {content_type}")
-        
-        form_data = aiohttp.FormData()
-        form_data.add_field('file', file_data, filename=filename, content_type=content_type)
-        
-        async with aiohttp.ClientSession() as session:
-            try:
-                company_id = data.get('id') or 1
-                logging.info(f"📤 Uploading to company {company_id}: {filename}")
-                async with session.post(f'{API_BASE_URL}/sales/company/{company_id}/upload-logo', data=form_data) as resp:
+        try:
+            if message.photo:
+                file = await bot.get_file(message.photo[-1].file_id)
+                file_data = await bot.download_file(file.file_path)
+                ext, ct = 'jpg', 'image/jpeg'
+            else:
+                file = await bot.get_file(message.document.file_id)
+                file_data = await bot.download_file(file.file_path)
+                ext, ct = 'png', 'image/png'
+            form_data = aiohttp.FormData()
+            form_data.add_field('file', file_data, filename=f'logo.{ext}', content_type=ct)
+            async with aiohttp.ClientSession() as session:
+                async with session.post(f'{API_BASE_URL}/sales/company/{data.get("id") or 1}/upload-logo', data=form_data) as resp:
                     if resp.status == 200:
                         result = await resp.json()
                         await state.update_data(logo_url=result.get('logo_url'))
-                        await message.answer(f"✅ Логотип загружен{quality_note}")
-                        logging.info(f"✅ Upload success: {result.get('logo_url')}")
-                    else:
-                        await message.answer("⚠️ Ошибка загрузки")
-                        logging.error(f"❌ Upload failed: {resp.status}")
-            except Exception as e:
-                logging.error(f"Logo upload error: {e}")
-                await message.answer("❌ Ошибка")
-    
-    # Go to bot_token
+                        await message.answer("✅ Загружен")
+        except: pass
     await state.set_state(CompanyFlow.editing_bot_token)
-    token = data.get('bot_token') or 'не указан'
-    token_preview = token[:20] + '...' if len(token) > 20 else token
-    await message.answer(f"🤖 <b>Шаг 8/11: Bot Token</b>\n\n<i>Текущий:</i> {token_preview}\n\nВведите или '.':", parse_mode='HTML')
+    token = data.get('bot_token') or 'нет'
+    await message.answer(f"🤖 <b>Шаг 8/11: Bot Token</b>\n\n<i>Текущий:</i> {token[:20]}...\n\nВведите или '.':", parse_mode='HTML')
 
 @dp.message(CompanyFlow.editing_bot_token)
 async def process_bot_token(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    if message.text != '.':
-        await state.update_data(bot_token=message.text)
-    
+    if message.text != '.': await state.update_data(bot_token=message.text)
     await state.set_state(CompanyFlow.editing_manager_chat_id)
-    manager = data.get('manager_chat_id') or 'не указан'
-    await message.answer(f"👤 <b>Шаг 9/11: Manager Chat ID</b>\n\n<i>Текущий:</i> {manager}\n\nВведите или '.':", parse_mode='HTML')
+    await message.answer(f"👤 <b>Шаг 9/11: Manager Chat ID</b>\n\n<i>Текущий:</i> {data.get('manager_chat_id') or 'нет'}\n\nВведите или '.':", parse_mode='HTML')
 
 @dp.message(CompanyFlow.editing_manager_chat_id)
 async def process_manager_chat_id(message: types.Message, state: FSMContext):
     data = await state.get_data()
     if message.text != '.':
-        try:
-            chat_id = int(message.text)
-            await state.update_data(manager_chat_id=chat_id)
+        try: await state.update_data(manager_chat_id=int(message.text))
         except:
-            await message.answer("⚠️ Неверный формат. Введите число:")
+            await message.answer("⚠️ Неверный формат")
             return
-    
-    # Go to AI endpoint step
     await state.set_state(CompanyFlow.editing_ai_endpoint)
-    endpoint = data.get('ai_endpoint') or 'не указан'
-    await message.answer(f"🤖 <b>Шаг 10/11: AI Endpoint</b>\n\n<i>Текущий:</i> {endpoint}\n\nВведите URL или '.':", parse_mode='HTML')
-
-
+    await message.answer(f"🤖 <b>Шаг 10/11: AI Endpoint</b>\n\n<i>Текущий:</i> {data.get('ai_endpoint') or 'нет'}\n\nВведите или '.':", parse_mode='HTML')
 
 @dp.message(CompanyFlow.editing_ai_endpoint)
 async def process_ai_endpoint(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    if message.text != '.':
-        await state.update_data(ai_endpoint=message.text)
-    
+    if message.text != '.': await state.update_data(ai_endpoint=message.text)
     await state.set_state(CompanyFlow.editing_ai_api_key)
-    api_key = data.get('ai_api_key') or 'не указан'
-    key_preview = api_key[:20] + '...' if len(api_key) > 20 else api_key
-    await message.answer(f"🔑 <b>Шаг 11/11: AI API Key</b>\n\n<i>Текущий:</i> {key_preview}\n\nВведите ключ или '.':", parse_mode='HTML')
+    api_key = data.get('ai_api_key') or 'нет'
+    await message.answer(f"🔑 <b>Шаг 11/11: AI API Key</b>\n\n<i>Текущий:</i> {api_key[:20]}...\n\nВведите или '.':", parse_mode='HTML')
 
 @dp.message(CompanyFlow.editing_ai_api_key)
 async def process_ai_api_key(message: types.Message, state: FSMContext):
-    if message.text != '.':
-        await state.update_data(ai_api_key=message.text)
-    
-    await save_company(message, state)
-async def save_company(message: types.Message, state: FSMContext):
+    if message.text != '.': await state.update_data(ai_api_key=message.text)
     data = await state.get_data()
-    status_msg = await message.answer("⏳ Сохранение...")
-    
     async with aiohttp.ClientSession() as session:
         try:
             async with session.post(f'{API_BASE_URL}/sales/company/upsert', json=data) as resp:
-                await status_msg.delete()
-                
                 if resp.status == 200:
                     result = await resp.json()
-                    action = "создана" if not data.get('id') else "обновлена"
-                    await message.answer(
-                        f"✅ <b>Компания {action}!</b>\n\n"
-                        f"ID: {result.get('id')}\n"
-                        f"Название: {result.get('name')}",
-                        parse_mode='HTML',
-                        reply_markup=get_main_keyboard()
-                    )
+                    await message.answer(f"✅ <b>Сохранено!</b>\n\nID: {result.get('id')}\nНазвание: {result.get('name')}", parse_mode='HTML', reply_markup=get_main_keyboard())
                 else:
-                    await message.answer("❌ Ошибка сохранения", reply_markup=get_main_keyboard())
-        except Exception as e:
-            await status_msg.delete()
-            logging.error(f"Save error: {e}")
+                    await message.answer("❌ Ошибка", reply_markup=get_main_keyboard())
+        except:
             await message.answer("❌ Ошибка соединения", reply_markup=get_main_keyboard())
-    
     await state.clear()
 
-# === Leads ===
-@dp.message(F.text == "📊 Все лиды")
+@dp.message(F.text == "📈 Лиды")
 async def btn_leads(message: types.Message):
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(f'{API_BASE_URL}/sales/all-leads?limit=10', timeout=aiohttp.ClientTimeout(total=5)) as resp:
+            companies = {}
+            try:
+                async with session.get(f'{API_BASE_URL}/sales/companies/all', timeout=aiohttp.ClientTimeout(total=3)) as cr:
+                    if cr.status == 200:
+                        for c in await cr.json():
+                            companies[c['id']] = c['name']
+            except: pass
+            
+            async with session.get(f'{API_BASE_URL}/sales/all-leads?limit=15', timeout=aiohttp.ClientTimeout(total=5)) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     leads = data.get('leads', [])
                     if not leads:
                         await message.answer("📊 Лидов нет")
                         return
-                    text = "📊 <b>Последние 10 лидов:</b>\n\n"
+                    text = "📊 <b>Последние лиды:</b>\n\n"
                     for l in leads:
                         contact = l.get('contact_info', {}) or {}
-                        name = contact.get('name', 'Без имени')
-                        phone = contact.get('phone', 'нет')
-                        source = l.get('source', 'web')
-                        src_icon = '✈️' if 'telegram' in source.lower() else '🌐'
-                        temp = contact.get('temperature', '🌤 теплый')
-                        text += f"#{l['id']} | {name} | 📱{phone} | {temp} | {src_icon}\n"
+                        phone = contact.get('phone') or '-'
+                        name = contact.get('name') or contact.get('username') or ''
+                        company_id = l.get('company_id', 0)
+                        company_name = companies.get(company_id, f'#{company_id}')
+                        temp_icon = get_temp_icon(l.get('temperature', 'warm'))
+                        src = '✈️' if 'telegram' in l.get('source', '').lower() else '🌐'
+                        if name:
+                            text += f"{src} <b>{company_name}</b> | {name} | 📱{phone} {temp_icon}\n"
+                        else:
+                            text += f"{src} <b>{company_name}</b> | 📱{phone} {temp_icon}\n"
                     await message.answer(text, parse_mode='HTML')
-                else:
-                    await message.answer(f"⚠️ Ошибка: {resp.status}")
     except Exception as e:
-        logging.error(f"Leads error: {e}")
         await message.answer(f"❌ Ошибка: {str(e)[:40]}")
 
-# === Status ===
 @dp.message(F.text == "⚙️ Статус")
 async def btn_status(message: types.Message):
     status = ["📈 <b>Статус системы:</b>\n"]
     
-    # Backend
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(f'{API_BASE_URL}/', timeout=aiohttp.ClientTimeout(total=3)) as resp:
-                if resp.status == 200:
-                    status.append("✅ Backend: Online")
-                else:
-                    status.append(f"⚠️ Backend: {resp.status}")
-    except Exception as e:
-        status.append(f"❌ Backend: {str(e)[:30]}")
+                status.append("✅ Backend API: Online" if resp.status == 200 else f"⚠️ Backend: {resp.status}")
+    except: status.append("❌ Backend API: Offline")
     
-    # Database
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f'{API_BASE_URL}/docs', timeout=aiohttp.ClientTimeout(total=3)) as resp:
+                status.append("✅ FastAPI Docs: Online" if resp.status == 200 else f"⚠️ FastAPI: {resp.status}")
+    except: status.append("❌ FastAPI: Offline")
+    
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(f'{API_BASE_URL}/sales/all-leads?limit=1', timeout=aiohttp.ClientTimeout(total=3)) as resp:
-                if resp.status == 200:
-                    status.append("✅ База данных: Online")
-                else:
-                    status.append(f"⚠️ База данных: {resp.status}")
-    except:
-        status.append("❌ База данных: Offline")
+                status.append("✅ PostgreSQL: Online" if resp.status == 200 else f"⚠️ PostgreSQL: {resp.status}")
+    except: status.append("❌ PostgreSQL: Offline")
     
-    # FastAPI status
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(f'{API_BASE_URL}/', timeout=aiohttp.ClientTimeout(total=3)) as resp:
-                if resp.status == 200:
-                    result = await resp.json()
-                    if 'message' in result or 'detail' in result or result:
-                        status.append("✅ FastAPI: Online")
-                    else:
-                        status.append("⚠️ FastAPI: Unexpected response")
-                else:
-                    status.append(f"⚠️ FastAPI: {resp.status}")
-    except:
-        status.append("❌ FastAPI: Offline")
+    status.append("✅ Whisper (голос): Ready")
     
-    status.append("✅ Голосовой ввод: Online")
-    
-    # Active bots
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(f'{API_BASE_URL}/sales/companies/all', timeout=aiohttp.ClientTimeout(total=3)) as resp:
                 if resp.status == 200:
                     companies = await resp.json()
-                    active_bots = sum(1 for c in companies if c.get('bot_token'))
-                    total = len(companies)
-                    status.append(f"\n🤖 Активных ботов: {active_bots}/{total}")
-    except:
-        status.append("\n🤖 Активных ботов: ?")
+                    active = sum(1 for c in companies if c.get('bot_token'))
+                    status.append(f"\n🏢 Компаний: {len(companies)}")
+                    status.append(f"🤖 С ботами: {active}")
+                    # Tier breakdown
+                    tiers = {}
+                    for c in companies:
+                        t = c.get('tier', 'free')
+                        tiers[t] = tiers.get(t, 0) + 1
+                    tier_str = ', '.join([f"{k}: {v}" for k, v in sorted(tiers.items())])
+                    status.append(f"💎 Тарифы: {tier_str}")
+    except: pass
     
     await message.answer('\n'.join(status), parse_mode='HTML')
 
+@dp.message(F.text == "🎯 Установить тариф")
+async def start_set_tier(message: types.Message, state: FSMContext):
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f'{API_BASE_URL}/sales/companies/all', timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                if resp.status == 200:
+                    companies = await resp.json()
+                    if not companies:
+                        await message.answer("📋 Нет компаний")
+                        return
+                    text = "🎯 <b>Установить тариф</b>\n\nВыберите компанию:\n\n"
+                    for i, c in enumerate(companies, 1):
+                        tier = c.get('tier', 'free')
+                        expiry = c.get('tier_expiry')
+                        if expiry and expiry != 'None': expiry = str(expiry)[:10]
+                        else: expiry = '∞' if tier == 'free' else 'N/A'
+                        text += f"{i}. {c['name']} — {tier} (до: {expiry})\n"
+                    await state.update_data(companies=companies)
+                    await state.set_state(CompanyFlow.selecting_company_for_tier)
+                    await message.answer(text, parse_mode='HTML')
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {str(e)[:40]}")
+
+@dp.message(CompanyFlow.selecting_company_for_tier)
+async def select_company_for_tier(message: types.Message, state: FSMContext):
+    try:
+        num = int(message.text.strip()) - 1
+        data = await state.get_data()
+        companies = data.get('companies', [])
+        if 0 <= num < len(companies):
+            company = companies[num]
+            await state.update_data(selected_company=company)
+            kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="free"), KeyboardButton(text="basic")],[KeyboardButton(text="pro"), KeyboardButton(text="enterprise")],[KeyboardButton(text="◀️ Назад")]], resize_keyboard=True)
+            await state.set_state(CompanyFlow.selecting_tier)
+            await message.answer(f"🎯 Компания: <b>{company['name']}</b>\n\nВыберите тариф:", parse_mode='HTML', reply_markup=kb)
+        else:
+            await message.answer("❌ Неверный номер")
+    except ValueError:
+        await message.answer("❌ Введите номер")
+
+@dp.message(CompanyFlow.selecting_tier)
+async def select_tier(message: types.Message, state: FSMContext):
+    tier = message.text.strip().lower()
+    if tier not in ['free', 'basic', 'pro', 'enterprise']:
+        await message.answer("❌ Выберите тариф")
+        return
+    await state.update_data(new_tier=tier)
+    await state.set_state(CompanyFlow.entering_tier_days)
+    await message.answer(f"📅 Тариф: <b>{tier}</b>\n\nВведите дней:", parse_mode='HTML', reply_markup=ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="7"), KeyboardButton(text="14"), KeyboardButton(text="30")],[KeyboardButton(text="90"), KeyboardButton(text="180"), KeyboardButton(text="365")]], resize_keyboard=True))
+
+@dp.message(CompanyFlow.entering_tier_days)
+async def enter_tier_days(message: types.Message, state: FSMContext):
+    try:
+        days = int(message.text.strip())
+        if days <= 0 or days > 3650:
+            await message.answer("❌ От 1 до 3650")
+            return
+        data = await state.get_data()
+        company = data.get('selected_company', {})
+        tier = data.get('new_tier', 'free')
+        from datetime import datetime, timedelta
+        expiry = (datetime.now() + timedelta(days=days)).isoformat()
+        async with aiohttp.ClientSession() as session:
+            async with session.patch(f"{API_BASE_URL}/sales/companies/{company['id']}/tier", json={'tier': tier, 'tier_expiry': expiry}, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                if resp.status == 200:
+                    await message.answer(f"✅ Установлен!\n\n🏢 {company['name']}\n🎯 {tier}\n📅 {days} дней\n⏰ До: {expiry[:10]}", reply_markup=get_company_menu_keyboard())
+                else:
+                    await message.answer(f"⚠️ Ошибка: {resp.status}")
+        await state.clear()
+    except ValueError:
+        await message.answer("❌ Введите число")
+    except Exception as e:
+        await message.answer(f"❌ {str(e)[:40]}")
+        await state.clear()
+
+@dp.message(F.text == "⏰ Продлить тариф")
+async def start_extend_tier(message: types.Message, state: FSMContext):
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f'{API_BASE_URL}/sales/companies/all', timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                if resp.status == 200:
+                    companies = await resp.json()
+                    companies_with_tier = [c for c in companies if c.get('tier', 'free') != 'free']
+                    if not companies_with_tier:
+                        await message.answer("📋 Нет компаний с платным тарифом", reply_markup=get_company_menu_keyboard())
+                        return
+                    text = "⏰ <b>Продлить тариф</b>\n\n"
+                    for i, c in enumerate(companies_with_tier, 1):
+                        expiry = c.get('tier_expiry')
+                        if expiry and expiry != 'None': expiry = str(expiry)[:10]
+                        else: expiry = 'N/A'
+                        text += f"{i}. {c['name']} — {c.get('tier')} (до: {expiry})\n"
+                    await state.update_data(companies=companies_with_tier)
+                    await state.set_state(CompanyFlow.selecting_company_for_extend)
+                    await message.answer(text, parse_mode='HTML')
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {str(e)[:40]}")
+
+@dp.message(CompanyFlow.selecting_company_for_extend)
+async def select_company_for_extend(message: types.Message, state: FSMContext):
+    try:
+        num = int(message.text.strip()) - 1
+        data = await state.get_data()
+        companies = data.get('companies', [])
+        if 0 <= num < len(companies):
+            company = companies[num]
+            await state.update_data(selected_company=company)
+            await state.set_state(CompanyFlow.entering_extend_days)
+            await message.answer(f"⏰ Продление: <b>{company['name']}</b>\n\nВведите дней:", parse_mode='HTML', reply_markup=ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="7"), KeyboardButton(text="14"), KeyboardButton(text="30")],[KeyboardButton(text="90"), KeyboardButton(text="180"), KeyboardButton(text="365")]], resize_keyboard=True))
+    except ValueError:
+        await message.answer("❌ Введите номер")
+
+@dp.message(CompanyFlow.entering_extend_days)
+async def enter_extend_days(message: types.Message, state: FSMContext):
+    try:
+        days = int(message.text.strip())
+        if days <= 0 or days > 3650:
+            await message.answer("❌ От 1 до 3650")
+            return
+        data = await state.get_data()
+        company = data.get('selected_company', {})
+        from datetime import datetime, timedelta
+        current_expiry = company.get('tier_expiry')
+        base = datetime.now()
+        if current_expiry and current_expiry != 'None':
+            try:
+                base = datetime.fromisoformat(str(current_expiry).replace('Z', '+00:00'))
+                if base.replace(tzinfo=None) < datetime.now(): base = datetime.now()
+            except: pass
+        new_expiry = (base + timedelta(days=days)).isoformat()
+        async with aiohttp.ClientSession() as session:
+            async with session.patch(f"{API_BASE_URL}/sales/companies/{company['id']}/tier", json={'tier_expiry': new_expiry}, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                if resp.status == 200:
+                    await message.answer(f"✅ Продлён!\n\n🏢 {company['name']}\n➕ {days} дней\n⏰ До: {new_expiry[:10]}", reply_markup=get_company_menu_keyboard())
+                else:
+                    await message.answer(f"⚠️ Ошибка: {resp.status}")
+        await state.clear()
+    except ValueError:
+        await message.answer("❌ Введите число")
+    except Exception as e:
+        await message.answer(f"❌ {str(e)[:40]}")
+        await state.clear()
+
+@dp.message(F.text == "🏠 Меню")
+async def btn_menu(message: types.Message, state: FSMContext):
+    await state.clear()
+    await message.answer("🔐 <b>SuperAdmin Panel</b>\n\nВыберите действие:", parse_mode="HTML", reply_markup=get_main_keyboard())
+
 @dp.message()
 async def handle_any(message: types.Message, state: FSMContext):
-    current_state = await state.get_state()
-    if current_state:
-        return
+    current = await state.get_state()
+    if current: return
     await message.answer("Выберите кнопку:", reply_markup=get_main_keyboard())
 
 async def main():
     logging.info("🔐 SuperAdmin Bot starting...")
-    logging.info(f"Using API: {API_BASE_URL}")
     await dp.start_polling(bot)
 
 if __name__ == '__main__':
