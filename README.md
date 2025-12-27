@@ -616,8 +616,102 @@ docker run --rm -v /var/www/bizdnai/widget-source:/out \
 - **v4.0**: Pointer events for push-to-talk, reset creates new lead
 - **v3.x**: Language support, tooltip, pulse animation adjustments
 
+'''
+Widget ID-Based URLs Refactoring - Walkthrough
+Objective
+Refactor widget system from channel_name-based URLs to widget_id-based URLs to enable multiple widgets per channel for A/B testing.
 
-bash
+What Was Implemented
+1. Database Schema
+✅ Translation fields added to 
+social_widgets
+ table:
+
+greeting_ru, greeting_en, greeting_kz, greeting_ky, greeting_uz, greeting_uk
+Existing greeting_message copied to greeting_ru for backward compatibility
+2. Backend API Changes
+New ID-Based Endpoints
+✅ GET /companies/{company_id}/widgets/{widget_id:int} - Get widget by ID
+
+# Returns widget data including all translations
+{
+  "id": 2,
+  "company_id": 1,
+  "channel_name": "instagram",
+  "greeting_message": "Здравствуйте!!!...",
+  "greetings": {
+    "ru": "Здравствуйте!!!...",
+    "en": null,
+    "kz": null,
+    ...
+  }
+}
+✅ DELETE /companies/{company_id}/widgets/{widget_id:int} - Delete widget by ID
+
+Widget Creation
+✅ Removed uniqueness constraint on 
+channel_name
+
+Multiple widgets can now have same 
+channel_name
+Each gets unique ID
+URL format: https://bizdnai.com/w/{company_id}/{widget_id}
+3. Frontend Updates
+URL Parsing
+Changed from:
+
+const channelName = pathParts[3];  // /w/1/instagram
+To:
+
+const widgetId = pathParts[3];  // /w/1/2
+API Integration
+// Fetch widget data by ID
+const response = await fetch(`/sales/companies/${companyId}/widgets/${widgetId}`);
+// Use channel_name from response for source tracking
+source: widgetData.channel_name || 'web'
+Error Handling
+404/405 responses show "Виджет не найден"
+Old channel_name URLs blocked
+4. Telegram Bot Updates
+Widget List Display
+Социальные сети:
+• Instagram (ID: 2)
+  🔗 https://bizdnai.com/w/1/2
+• Instagram (ID: 3)
+  🔗 https://bizdnai.com/w/1/3
+Delete Operation
+Callback data uses widget_id
+API call: DELETE /sales/companies/{company_id}/widgets/{widget_id}
+Testing Results
+✅ Multiple Widgets Per Channel
+Created 3 Instagram widgets:
+
+Widget ID=2: Active, URL /w/1/2
+Widget ID=3: Active, URL /w/1/3
+Widget ID=4: Active, URL /w/1/4
+✅ Widget Operations
+Create: Multiple widgets with same channel_name ✅
+List: Shows all active widgets with IDs and URLs ✅
+Delete: Removes widget by ID, URL becomes inaccessible ✅
+✅ URL Behavior
+New URLs (/w/1/2, /w/1/3) work correctly ✅
+Old URLs (/w/1/instagram) blocked with 405 error ✅
+Deleted widget URLs show "Виджет не найден" ✅
+Migration Impact
+Backward Compatibility
+Old channel_name endpoint removed
+Existing widgets updated with ID-based URLs in database
+No data loss during migration
+Breaking Changes
+Old URL format /w/{company_id}/{channel_name} no longer works
+All widgets must use ID-based URLs
+Benefits Achieved
+A/B Testing Support: Create unlimited widgets per channel with different greetings
+Unique Identification: Each widget has permanent unique ID
+Scalability: No naming conflicts or uniqueness constraints
+Analytics: Track performance per widget ID, not just channel
+'''
+
 # Telegram Bot
 BOT_TOKEN=your_telegram_bot_token
 
