@@ -845,13 +845,12 @@ async def list_widgets(company_id:int,db:AsyncSession=Depends(get_db)):
 async def create_widget(company_id:int,data:dict,db:AsyncSession=Depends(get_db)):
     ch=transliterate_to_english(data.get("channel_name",""))
     if not ch:raise HTTPException(400,"channel_name required")
-    r=await db.execute(select(SocialWidget).where(SocialWidget.company_id==company_id,SocialWidget.channel_name==ch))
-    if r.scalar_one_or_none():raise HTTPException(400,f"Widget {ch} exists")
+    # Allow multiple widgets per channel - no uniqueness check
     w=SocialWidget(company_id=company_id,channel_name=ch,greeting_message=data.get("greeting_message","Здравствуйте!"),is_active=True)
     db.add(w)
     await db.commit()
     await db.refresh(w)
-    return {"id":w.id,"channel_name":w.channel_name,"url":f"https://bizdnai.com/w/{company_id}/{ch}"}
+    return {"id":w.id,"channel_name":w.channel_name,"url":f"https://bizdnai.com/w/{company_id}/{w.id}"}
 
 
 
@@ -882,24 +881,44 @@ async def get_leads_stats(company_id: int, db: AsyncSession = Depends(get_db)):
         "by_source": sources
     }
 
-@router.get("/companies/{company_id}/widgets/{channel_name}")
-async def get_widget_config(company_id: int, channel_name: str, db: AsyncSession = Depends(get_db)):
-    """Get widget configuration by channel name"""
-    result = await db.execute(
-        select(SocialWidget).where(
-            SocialWidget.company_id == company_id,
-            SocialWidget.channel_name == channel_name,
-            SocialWidget.is_active == True
+@router.delete("/companies/{company_id}/widgets/{widget_id:int}")
+async def delete_social_widget(
+    company_id: int,
+    widget_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete (deactivate) social media widget"""
+    try:
+        result = await db.execute(
+            select(SocialWidget).where(
+                SocialWidget.company_id == company_id,
+                SocialWidget.id == widget_id
+            )
         )
-    )
-    widget = result.scalar_one_or_none()
+        widget = result.scalar_one_or_none()
+        
+        if not widget:
+            raise HTTPException(status_code=404, detail='Widget not found')
+        
+        # Soft delete - just deactivate
+        widget.is_active = False
+        await db.commit()
+        
+        return {'message': 'Widget deleted successfully'}
     
-    if not widget:
-        raise HTTPException(status_code=404, detail="Widget not found")
-    
-    return {
-        "id": widget.id,
-        "channel_name": widget.channel_name,
-        "greeting_message": widget.greeting_message,
-        "company_id": widget.company_id
-    }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f'Delete widget error: {e}')
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/companies/{company_id}/widgets/{widget_id:int}")
+async def get_widget_by_id(company_id:int,widget_id:int,db:AsyncSession=Depends(get_db)):
+    """Get widget by ID"""
+    r=await db.execute(select(SocialWidget).where(SocialWidget.company_id==company_id,SocialWidget.id==widget_id,SocialWidget.is_active==True))
+    w=r.scalar_one_or_none()
+    if not w:raise HTTPException(404,"Widget not found")
+    return {"id":w.id,"company_id":w.company_id,"channel_name":w.channel_name,"greeting_message":w.greeting_message,"greetings":{"ru":w.greeting_ru or w.greeting_message,"en":w.greeting_en or w.greeting_message,"kz":w.greeting_kz or w.greeting_message,"ky":w.greeting_ky or w.greeting_message,"uz":w.greeting_uz or w.greeting_message,"uk":w.greeting_uk or w.greeting_message},"is_active":w.is_active}
+
+

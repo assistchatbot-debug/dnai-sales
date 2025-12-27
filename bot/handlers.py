@@ -69,12 +69,49 @@ async def cmd_start(message: types.Message, state: FSMContext):
     # Manager menu with buttons
     if is_manager(message.from_user.id,message.bot):
         from aiogram.types import ReplyKeyboardMarkup,KeyboardButton
-        kb=ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📊 Статус"),KeyboardButton(text="📋 Лиды")],[KeyboardButton(text="📢 Каналы"),KeyboardButton(text="🌐 Виджет")],[KeyboardButton(text="❓ Помощь"),KeyboardButton(text="🏠 Меню")]],resize_keyboard=True)
+        kb=ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📊 Статус"),KeyboardButton(text="📋 Лиды")],[KeyboardButton(text="📢 Каналы")],[KeyboardButton(text="📊 Лиды за неделю"),KeyboardButton(text="📊 Лиды за месяц")],[KeyboardButton(text="🏠 Меню")]],resize_keyboard=True)
         await message.answer("🤖 <b>Меню</b>",reply_markup=kb,parse_mode='HTML')
         return
     await state.set_state(SalesFlow.qualifying)
-    await start_session(message.from_user.id)
-    await message.answer("Привет! Я Умный Агент (BizDNAi).\n\n🚀 Я новое поколение корпоративного AI.\n\nЯ помогу подобрать идеальное решение.\nПишите или говорите, и я вам отвечу.\n\nДля смены языка используйте /lang",reply_markup=get_start_keyboard())
+    await start_session(message.from_user.id, company_id=1)
+    
+    # Language selection buttons
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    lang_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🇷🇺 Русский", callback_data="lang_ru"),
+         InlineKeyboardButton(text="🇺🇸 English", callback_data="lang_en")],
+        [InlineKeyboardButton(text="🇰🇿 Қазақша", callback_data="lang_kz"),
+         InlineKeyboardButton(text="🇰🇬 Кыргызча", callback_data="lang_ky")],
+        [InlineKeyboardButton(text="🇺🇿 O'zbekcha", callback_data="lang_uz"),
+         InlineKeyboardButton(text="🇺🇦 Українська", callback_data="lang_uk")]
+    ])
+    
+    await message.answer(
+        "Привет! Я Умный Агент (BizDNAi).\n🚀 Я новое поколение корпоративного AI.\n\n"
+        "Hello! I'm Smart Agent (BizDNAi).\n🚀 I'm the new generation of corporate AI.\n\n"
+        "Выберите язык / Choose language:",
+        reply_markup=lang_kb
+    )
+
+
+
+@router.callback_query(F.data.startswith("lang_"))
+async def set_language_callback(callback: types.CallbackQuery, state: FSMContext):
+    """Handle language selection"""
+    lang = callback.data.split("_")[1]
+    await state.update_data(language=lang)
+    
+    greetings = {
+        'ru': 'Отлично! Теперь пишите или говорите, и я вам отвечу.',
+        'en': 'Great! Now write or speak, and I will answer you.',
+        'kz': 'Тамаша! Енді жазыңыз немесе сөйлеңіз, мен сізге жауап беремін.',
+        'ky': 'Мыкты! Эми жазыңыз же сүйлөңүз, мен сизге жооп берем.',
+        'uz': 'Ajoyib! Endi yozing yoki gapiring, men sizga javob beraman.',
+        'uk': 'Чудово! Тепер пишіть або говоріть, і я вам відповім.'
+    }
+    
+    await callback.message.edit_text(greetings.get(lang, greetings['ru']))
+    await callback.answer()
 
 @router.message(Command('id'))
 async def cmd_id(message: types.Message):
@@ -121,14 +158,27 @@ async def handle_voice(message: types.Message, state: FSMContext):
     user_id = str(message.from_user.id)
     username = message.from_user.username or f"user_{user_id}"
     
-    status_msg = await message.answer("🎤 Думаю...")
+    # Get language for status message
+    state_data = await state.get_data()
+    language = state_data.get('language', 'ru')
+    
+    status_messages = {
+        'ru': '🧠 Думаю...',
+        'en': '🧠 Thinking...',
+        'kz': '🧠 Ойланудамын...',
+        'ky': '🧠 Ойлонуп жатам...',
+        'uz': '🧠 O\'ylayapman...',
+        'uk': '🧠 Думаю...'
+    }
+    
+    status_msg = await message.answer(status_messages.get(language, '🧠 Думаю...'))
     
     # Get session_id from state
     data = await state.get_data()
     session_id = data.get("session_id")
     
     if not session_id:
-        session_id = await start_session(message.from_user.id)
+        session_id = await start_session(message.from_user.id, company_id=1)
         if session_id:
             await state.update_data(session_id=session_id)
     
@@ -140,15 +190,20 @@ async def handle_voice(message: types.Message, state: FSMContext):
         file_data.seek(0)
         
         # Prepare form data
-        data = aiohttp.FormData()
-        data.add_field('file', file_data, filename='voice.ogg', content_type='audio/ogg')
-        data.add_field('session_id', session_id or 'voice_session') 
-        data.add_field('user_id', user_id)
-        data.add_field('username', username)
+        data_form = aiohttp.FormData()
+        data_form.add_field('file', file_data, filename='voice.ogg', content_type='audio/ogg')
+        data_form.add_field('session_id', session_id or 'voice_session') 
+        data_form.add_field('user_id', user_id)
+        data_form.add_field('username', username)
+        
+        # Get language from state (default to 'ru')
+        state_data = await state.get_data()
+        language = state_data.get('language', 'ru')
+        data_form.add_field('language', language)
         
         company_id = getattr(message.bot, 'company_id', 1)
         async with aiohttp.ClientSession() as session:
-             async with session.post(f'{API_BASE_URL}/sales/{company_id}/voice', data=data) as resp:
+             async with session.post(f'{API_BASE_URL}/sales/{company_id}/voice', data=data_form) as resp:
                  if resp.status == 200:
                      result = await resp.json()
                      ai_response = result.get('response', '')
@@ -160,7 +215,15 @@ async def handle_voice(message: types.Message, state: FSMContext):
                         pass
                      
                      if transcribed_text:
-                        await message.answer(f"🗣 Вы сказали: {transcribed_text}")
+                        you_said_text = {
+                            'ru': '🗣 Вы сказали:',
+                            'en': '🗣 You said:',
+                            'kz': '🗣 Сіз айттыңыз:',
+                            'ky': '🗣 Сиз айттыңыз:',
+                            'uz': '🗣 Siz aytdingiz:',
+                            'uk': '🗣 Ви сказали:'
+                        }
+                        await message.answer(f"{you_said_text.get(language, '🗣 Вы сказали:')} {transcribed_text}")
                         
                      await process_backend_response(message, ai_response)
                  else:
@@ -197,7 +260,7 @@ async def handle_manager_voice(message: types.Message):
         
         company_id = getattr(message.bot, 'company_id', 1)
         async with aiohttp.ClientSession() as session:
-            async with session.post(f'{API_BASE_URL}/sales/{company_id}/voice', data=data) as resp:
+            async with session.post(f'{API_BASE_URL}/sales/{company_id}/voice', data=data_form) as resp:
                 if resp.status == 200:
                     result = await resp.json()
                     transcribed_text = result.get('text', '')
@@ -208,7 +271,15 @@ async def handle_manager_voice(message: types.Message):
                         pass
                     
                     if transcribed_text:
-                        await message.answer(f"🗣 Вы сказали: {transcribed_text}")
+                        you_said_text = {
+                            'ru': '🗣 Вы сказали:',
+                            'en': '🗣 You said:',
+                            'kz': '🗣 Сіз айттыңыз:',
+                            'ky': '🗣 Сиз айттыңыз:',
+                            'uz': '🗣 Siz aytdingiz:',
+                            'uk': '🗣 Ви сказали:'
+                        }
+                        await message.answer(f"{you_said_text.get(language, '🗣 Вы сказали:')} {transcribed_text}")
                         # Process as manager command
                         await process_manager_command(message, transcribed_text, state)
                     else:
@@ -262,6 +333,72 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
         await message.answer('\n'.join(status_parts), parse_mode='HTML')
     
     # View recent leads
+    # Leads by period (must be before general 'лиды' handler)
+    elif 'лиды за неделю' in text_lower:
+        company_id=1
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f'{API_BASE_URL}/sales/{company_id}/leads',params={'limit':100},timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    if resp.status==200:
+                        data=await resp.json()
+                        leads=data.get('leads',[])
+                        from datetime import datetime,timedelta
+                        week_ago=datetime.now()-timedelta(days=7)
+                        week_leads=[l for l in leads if datetime.fromisoformat(l['created_at'].replace('Z','+00:00'))>week_ago]
+                        from collections import Counter
+                        sources=Counter(l.get('source','web') for l in week_leads)
+                        msg=f"📊 <b>Лиды за неделю</b>\n\nВсего: {len(week_leads)}\n\n<b>По источникам:</b>\n"
+                        for source,count in sorted(sources.items(), key=lambda x: (1, int(x[0])) if x[0].isdigit() else (0, x[0].lower())):
+                            if source.isdigit():
+                                msg+=f"📸 Instagram #{source}: {count}\n"
+                            else:
+                                msg+=f"• {source}: {count}\n"
+                        msg+="\n<b>Последние 10:</b>\n"
+                        for lead in week_leads[:10]:
+                            contact=lead.get('contact_info',{})
+                            name=contact.get('name','Не указано')
+                            phone=contact.get('phone','Не указан')
+                            source=lead.get('source','web')
+                            msg+=f"• {name} ({phone}) - {source}\n"
+                        await message.answer(msg,parse_mode='HTML')
+                    else:
+                        await message.answer("⚠️ Не удалось получить лиды")
+        except Exception as e:
+            logging.error(f"Week leads error: {e}")
+            await message.answer("❌ Ошибка")
+    elif 'лиды за месяц' in text_lower:
+        company_id=1
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f'{API_BASE_URL}/sales/{company_id}/leads',params={'limit':200},timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    if resp.status==200:
+                        data=await resp.json()
+                        leads=data.get('leads',[])
+                        from datetime import datetime,timedelta
+                        month_ago=datetime.now()-timedelta(days=30)
+                        month_leads=[l for l in leads if datetime.fromisoformat(l['created_at'].replace('Z','+00:00'))>month_ago]
+                        from collections import Counter
+                        sources=Counter(l.get('source','web') for l in month_leads)
+                        msg=f"📊 <b>Лиды за месяц</b>\n\nВсего: {len(month_leads)}\n\n<b>По источникам:</b>\n"
+                        for source,count in sorted(sources.items(), key=lambda x: (1, int(x[0])) if x[0].isdigit() else (0, x[0].lower())):
+                            if source.isdigit():
+                                msg+=f"📸 Instagram #{source}: {count}\n"
+                            else:
+                                msg+=f"• {source}: {count}\n"
+                        msg+="\n<b>Последние 10:</b>\n"
+                        for lead in month_leads[:10]:
+                            contact=lead.get('contact_info',{})
+                            name=contact.get('name','Не указано')
+                            phone=contact.get('phone','Не указан')
+                            source=lead.get('source','web')
+                            msg+=f"• {name} ({phone}) - {source}\n"
+                        await message.answer(msg,parse_mode='HTML')
+                    else:
+                        await message.answer("⚠️ Не удалось получить лиды")
+        except Exception as e:
+            logging.error(f"Month leads error: {e}")
+            await message.answer("❌ Ошибка")
+    
     elif 'лиды' in text_lower or 'leads' in text_lower or 'лід' in text_lower:
         company_id = getattr(message.bot, 'company_id', 1)
         logging.info(f"🏢 MULTITENANCY: Manager viewing leads for company {company_id}")
@@ -302,8 +439,18 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
                             'vk': '🔵 ВКонтакте'
                         }
                         
-                        for source, count in sorted(by_source.items(), key=lambda x: -x[1]):
-                            emoji_name = source_emojis.get(source, f'📍 {source.capitalize()}')
+                        # Sort: named channels first, then widget IDs
+                        def sort_key(item):
+                            source = item[0]
+                            if source.isdigit():
+                                return (1, int(source))  # Widget IDs second
+                            return (0, source.lower())  # Named channels first
+                        
+                        for source, count in sorted(by_source.items(), key=sort_key):
+                            if source.isdigit():
+                                emoji_name = f'📸 Instagram #{source}'
+                            else:
+                                emoji_name = source_emojis.get(source, f'📍 {source.capitalize()}')
                             stats_text += f"{emoji_name}: {count}\n"
                         
                         leads_text = [stats_text + "\n<b>Последние 5 лидов:</b>\n"]
@@ -361,13 +508,17 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
                         if widgets:
                             msg_parts.append("<b>Социальные сети:</b>")
                             for w in widgets:
-                                channel = w['channel_name'].capitalize()
+                                channel_name = w['channel_name']
+                                channel_display = channel_name.capitalize()
                                 widget_id = w['id']
-                                msg_parts.append(f"• {channel}")
+                                widget_url = f"https://bizdnai.com/w/{company_id}/{widget_id}"  # Always use ID
+                                
+                                msg_parts.append(f"• {channel_display} (ID: {widget_id})")
+                                msg_parts.append(f"  🔗 {widget_url}")
                                 
                                 buttons.append([
-                                    InlineKeyboardButton(text=f"✏️ {channel}", callback_data=f"edit_widget_{widget_id}"),
-                                    InlineKeyboardButton(text=f"🗑 {channel}", callback_data=f"delete_widget_{widget_id}")
+                                    InlineKeyboardButton(text=f"✏️ Edit #{widget_id}", callback_data=f"edit_widget_{widget_id}"),
+                                    InlineKeyboardButton(text=f"🗑 Delete #{widget_id}", callback_data=f"delete_widget_{widget_id}")
                                 ])
                         else:
                             msg_parts.append("<i>Социальных каналов пока нет</i>")
@@ -391,8 +542,9 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
         kb = ReplyKeyboardMarkup(
             keyboard=[
                 [KeyboardButton(text="📊 Статус"), KeyboardButton(text="📋 Лиды")],
-                [KeyboardButton(text="📢 Каналы"), KeyboardButton(text="🌐 Виджет")],
-                [KeyboardButton(text="❓ Помощь"), KeyboardButton(text="🏠 Меню")]
+                [KeyboardButton(text="📢 Каналы")],
+                [KeyboardButton(text="📊 Лиды за неделю"), KeyboardButton(text="📊 Лиды за месяц")],
+                [KeyboardButton(text="🏠 Меню")]
             ],
             resize_keyboard=True
         )
@@ -405,7 +557,7 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
             "<b>📊 Статус</b> - проверка всех систем\n"
             "<b>📋 Лиды</b> - просмотр последних лидов\n"
             "<b>📢 Каналы</b> - список социальных каналов\n"
-            "<b>🌐 Виджет</b> - управление виджетом\n"
+            
             "<b>создать канал</b> - создать новый канал\n\n"
             "💡 Также работают голосовые сообщения!\n\n"
             "Используйте кнопки меню для быстрого доступа.",
@@ -530,12 +682,17 @@ async def handle_text(message: types.Message, state: FSMContext):
     company_id = getattr(message.bot, 'company_id', 1)
     async with aiohttp.ClientSession() as session:
         try:
+            # Get language from state
+            state_data = await state.get_data()
+            language = state_data.get('language', 'ru')
+            
             async with session.post(f'{API_BASE_URL}/sales/{company_id}/chat', json={
                 'message': message.text,
                 'user_id': user_id,
                 'username': username,
                 'session_id': session_id,
-                'source': 'telegram'
+                'source': 'telegram',
+                'language': language
             }) as resp:
                 if resp.status == 200:
                     data = await resp.json()
@@ -599,13 +756,13 @@ async def delete_widget_callback(callback: types.CallbackQuery):
         await callback.answer("❌ Недостаточно прав", show_alert=True)
         return
     
-    widget_id = callback.data.split("_")[-1]
+    channel_name = callback.data.split("_", 2)[-1]  # Get everything after "delete_widget_"
     company_id = callback.bot.company_id
     
     try:
         async with aiohttp.ClientSession() as session:
             async with session.delete(
-                f'{API_BASE_URL}/sales/companies/{company_id}/widgets/{widget_id}',
+                f'{API_BASE_URL}/sales/companies/{company_id}/widgets/{channel_name}',
                 timeout=aiohttp.ClientTimeout(total=10)
             ) as resp:
                 if resp.status == 200:

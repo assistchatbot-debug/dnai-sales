@@ -13,12 +13,16 @@ class VoiceService:
     async def transcribe_audio(self, file_path: str, language: str = "ru") -> str:
         if not self.client: return "Voice Service not configured."
         try:
+            # Map language codes (kz -> kk for Kazakh)
+            lang_map = {'kz': 'kk', 'ky': 'ky', 'uz': 'uz', 'uk': 'uk', 'en': 'en', 'ru': 'ru'}
+            whisper_lang = lang_map.get(language, 'ru')
+            
             with open(file_path, "rb") as audio_file:
                 # Note: AsyncOpenAI audio.transcriptions.create is awaitable
                 transcript = await self.client.audio.transcriptions.create(
                     model="whisper-1", 
                     file=audio_file,
-                    language=language
+                    language=whisper_lang
                 )
             return transcript.text
         except Exception as e:

@@ -201,7 +201,14 @@ class SocialWidget(Base):
     id=Column(Integer,primary_key=True,index=True)
     company_id=Column(Integer,ForeignKey("companies.id"),nullable=False)
     channel_name=Column(String(50),nullable=False,index=True)
-    greeting_message=Column(Text)
+    greeting_message=Column(Text)  # Deprecated, use greeting_ru
+    # Multilingual greetings
+    greeting_ru=Column(Text)  # Russian
+    greeting_en=Column(Text)  # English
+    greeting_kz=Column(Text)  # Kazakh
+    greeting_ky=Column(Text)  # Kyrgyz
+    greeting_uz=Column(Text)  # Uzbek
+    greeting_uk=Column(Text)  # Ukrainian
     is_active=Column(Boolean,default=True)
     created_at=Column(DateTime(timezone=True),server_default=func.now())
     company=relationship("Company",back_populates="social_widgets")
