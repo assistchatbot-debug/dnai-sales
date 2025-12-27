@@ -4,8 +4,3 @@ class SalesFlow(StatesGroup):
     qualifying = State()
     collecting_phone = State()
     waiting_manager_message = State()  # NEW: waiting for message to manager
-
-
-class ManagerFlow(StatesGroup):
-    entering_channel_name=State()
-    entering_greeting=State()

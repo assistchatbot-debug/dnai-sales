@@ -10,6 +10,8 @@
         @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
         .recording { background: #ef4444 !important; animation: pulse 1.5s infinite; }
         .sticky-logo { position: sticky; top: 20px; z-index: 50; background: rgba(99, 102, 241, 0.8); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+        select option { background-color: #1f2937; color: white; }
+        select option:hover { background-color: #374151; }
     </style>
 </head>
 <body class="bg-gradient-to-br from-indigo-500 to-purple-600 min-h-screen p-4">
@@ -49,11 +51,52 @@
     </div>
     <script>
         const urlParams = new URLSearchParams(window.location.search);
-        const companyId = urlParams.get('company') || '1';
+        // Parse URL: /w/{company_id}/{channel_name}
+        const pathParts = window.location.pathname.split('/').filter(p => p);
+        let companyId = '1';
+        let channelName = null;
+        
+        if (pathParts[0] === 'w' && pathParts.length >= 2) {
+            companyId = pathParts[1];
+            channelName = pathParts[2] || null;
+        } else {
+            // Fallback to query params
+            companyId = urlParams.get('company') || '1';
+        }
         const API = `/sales/${companyId}`;
         let sessionId = null;
+        let visitorId = localStorage.getItem('bizdnaii_vid') || 'v_' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('bizdnaii_vid', visitorId);
         const langMap = { ru: 'ru', en: 'en', kz: 'kk', kg: 'ky', uz: 'uz', ua: 'uk' };
-        const greetings = { ru: 'Здравствуйте!\nЯ умный помощник BizDNAi.\n\nАвтоматизация бизнеса: Маркетинг, Финансы, Продажи...', en: 'Hello!\nI am the smart assistant of BizDNAi.\n\nBusiness automation: Marketing, Finance, Sales...', kz: 'Сәлеметсіз бе!\nМен BizDNAi ақылды көмекшісімін.\n\nБизнесті автоматтандыру: Маркетинг, Қаржы, Сату...', kg: 'Саламатсызбы!\nМен BizDNAi акылдуу жардамчысымын.\n\nБизнести автоматташтыруу: Маркетинг, Финансы, Сатуу...', uz: 'Salom!\nMen BizDNAi aqlli yordamchisiman.\n\nBiznesni avtomatlashtirish: Marketing, Moliya, Sotish...', ua: 'Вітаю!\nЯ розумний помічник BizDNAi.\n\nАвтоматизація бізнесу: Маркетинг, Фінанси, Продажі...' };
+        // Default greetings (fallback)
+        const defaultGreetings = { 
+            ru: 'Здравствуйте!\nЯ умный помощник BizDNAi.\n\nАвтоматизация бизнеса: Маркетинг, Финансы, Продажи...', 
+            en: 'Hello!\nI am the smart assistant of BizDNAi.',
+            kz: 'Сәлеметсіз бе!\nМен BizDNAi ақылды көмекшісімін.',
+        };
+        let customGreeting = null;
+        
+        // Load widget-specific greeting and initialize
+        async function loadWidgetConfig() {
+            if (channelName) {
+                try {
+                    const response = await fetch(`/sales/companies/${companyId}/widgets/${channelName}`);
+                    const data = await response.json();
+                    if (data.greeting_message) {
+                        customGreeting = data.greeting_message;
+                        console.log('✅ Loaded custom greeting for', channelName);
+                    }
+                } catch (e) {
+                    console.log('No custom greeting, using default');
+                }
+            }
+            // Initialize chat AFTER loading greeting
+            resetChat();
+        }
+        
+        // Call the function
+        loadWidgetConfig();
+        loadWidgetConfig();
         
         fetch(`${API}/company-info`).then(r => r.json()).then(data => {
             console.log('Company data:', data);
@@ -64,15 +107,14 @@
         }).catch(e => { console.error('Load failed:', e); companyDesc.textContent = '⚠️ Ошибка загрузки данных'; });
         
         function addMsg(text, isUser) { const div = document.createElement('div'); div.className = `flex ${isUser ? 'justify-end' : 'justify-start'}`; div.innerHTML = `<div class="max-w-[80%] px-4 py-2 rounded-2xl whitespace-pre-line ${isUser ? 'bg-indigo-600 text-white' : 'bg-slate-700 text-white'}">${text}</div>`; messages.appendChild(div); messages.scrollTop = messages.scrollHeight; }
-        async function sendMsg() { const text = input.value.trim(); if (!text) return; addMsg(text, true); input.value = ''; typing.classList.remove('hidden'); try { const res = await fetch(`${API}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text, session_id: sessionId, user_id: 'standalone_' + Date.now(), language: langMap[langSelect.value] || 'ru' }) }); const data = await res.json(); if (data.session_id) sessionId = data.session_id; addMsg(data.response, false); } catch (e) { addMsg('❌ Ошибка связи', false); } finally { typing.classList.add('hidden'); } }
-        function resetChat() { sessionId = null; messages.innerHTML = ''; addMsg(greetings[langSelect.value] || greetings.ru, false); }
+        async function sendMsg() { const text = input.value.trim(); if (!text) return; addMsg(text, true); input.value = ''; typing.classList.remove('hidden'); try { const res = await fetch(`${API}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text, session_id: sessionId, user_id: visitorId, language: langMap[langSelect.value] || 'ru', source: channelName || 'web' }) }); const data = await res.json(); if (data.session_id) sessionId = data.session_id; addMsg(data.response, false); } catch (e) { addMsg('❌ Ошибка связи', false); } finally { typing.classList.add('hidden'); } }
+        function resetChat() { visitorId = 'v_' + Math.random().toString(36).substr(2, 9); localStorage.setItem('bizdnaii_vid', visitorId); sessionId = null; messages.innerHTML = ''; addMsg(customGreeting || defaultGreetings[langSelect.value] || defaultGreetings.ru, false); }
         let mediaRecorder, audioChunks, isRecording = false;
-        voiceBtn.addEventListener('pointerdown', async (e) => { e.preventDefault(); if (isRecording) return; try { const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); mediaRecorder = new MediaRecorder(stream); audioChunks = []; isRecording = true; mediaRecorder.ondataavailable = e => audioChunks.push(e.data); mediaRecorder.onstop = async () => { const blob = new Blob(audioChunks, { type: 'audio/webm' }); const formData = new FormData(); formData.append('file', blob, 'voice.webm'); formData.append('session_id', sessionId || 'new'); formData.append('user_id', 'standalone_' + Date.now()); formData.append('language', langMap[langSelect.value] || 'ru'); addMsg('🎤 Голосовое...', true); typing.classList.remove('hidden'); try { const res = await fetch(`${API}/voice`, { method: 'POST', body: formData }); const data = await res.json(); if (data.text) { const msgs = messages.querySelectorAll('.flex.justify-end'); msgs[msgs.length - 1].querySelector('div').textContent = '🗣 ' + data.text; } if (data.response) addMsg(data.response, false); } catch (e) { addMsg('❌ Ошибка голоса', false); } finally { typing.classList.add('hidden'); } stream.getTracks().forEach(t => t.stop()); isRecording = false; }; mediaRecorder.start(); voiceBtn.classList.add('recording'); } catch (e) { addMsg('❌ Микрофон недоступен', false); isRecording = false; } });
+        voiceBtn.addEventListener('pointerdown', async (e) => { e.preventDefault(); if (isRecording) return; try { const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); mediaRecorder = new MediaRecorder(stream); audioChunks = []; isRecording = true; mediaRecorder.ondataavailable = e => audioChunks.push(e.data); mediaRecorder.onstop = async () => { const blob = new Blob(audioChunks, { type: 'audio/webm' }); const formData = new FormData(); formData.append('file', blob, 'voice.webm'); formData.append('session_id', sessionId || 'new'); formData.append('user_id', visitorId); formData.append('language', langMap[langSelect.value] || 'ru'); formData.append('source', channelName || 'web'); addMsg('🎤 Голосовое...', true); typing.classList.remove('hidden'); try { const res = await fetch(`${API}/voice`, { method: 'POST', body: formData }); const data = await res.json(); if (data.text) { const msgs = messages.querySelectorAll('.flex.justify-end'); msgs[msgs.length - 1].querySelector('div').textContent = '🗣 ' + data.text; } if (data.response) addMsg(data.response, false); } catch (e) { addMsg('❌ Ошибка голоса', false); } finally { typing.classList.add('hidden'); } stream.getTracks().forEach(t => t.stop()); isRecording = false; }; mediaRecorder.start(); voiceBtn.classList.add('recording'); } catch (e) { addMsg('❌ Микрофон недоступен', false); isRecording = false; } });
         voiceBtn.addEventListener('pointerup', (e) => { e.preventDefault(); if (mediaRecorder && mediaRecorder.state === 'recording') { mediaRecorder.stop(); voiceBtn.classList.remove('recording'); } });
         voiceBtn.addEventListener('pointercancel', (e) => { if (mediaRecorder && mediaRecorder.state === 'recording') { mediaRecorder.stop(); voiceBtn.classList.remove('recording'); } });
         input.addEventListener('keypress', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); } });
         langSelect.addEventListener('change', resetChat);
-        resetChat();
     </script>
 </body>
 </html>

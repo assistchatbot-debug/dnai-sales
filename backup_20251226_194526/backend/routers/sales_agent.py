@@ -38,7 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.future import select
 from database import get_db
-from models import SalesAgentConfig, ProductSelectionSession, VoiceMessage, Lead, Interaction, UserPreference, Company, SocialWidget
+from models import SalesAgentConfig, ProductSelectionSession, VoiceMessage, Lead, Interaction, UserPreference, Company
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 import uuid
@@ -832,74 +832,3 @@ async def get_all_companies(db: AsyncSession = Depends(get_db)):
     except Exception as e:
         logging.error(f'Get all companies error: {e}')
         return []
-
-
-from services.transliterate import transliterate_to_english
-
-@router.get("/companies/{company_id}/widgets")
-async def list_widgets(company_id:int,db:AsyncSession=Depends(get_db)):
-    r=await db.execute(select(SocialWidget).where(SocialWidget.company_id==company_id,SocialWidget.is_active==True))
-    return {"widgets":[{"id":w.id,"channel_name":w.channel_name,"greeting_message":w.greeting_message,"url":f"https://bizdnai.com/w/{company_id}/{w.channel_name}"}for w in r.scalars().all()]}
-
-@router.post("/companies/{company_id}/widgets")
-async def create_widget(company_id:int,data:dict,db:AsyncSession=Depends(get_db)):
-    ch=transliterate_to_english(data.get("channel_name",""))
-    if not ch:raise HTTPException(400,"channel_name required")
-    r=await db.execute(select(SocialWidget).where(SocialWidget.company_id==company_id,SocialWidget.channel_name==ch))
-    if r.scalar_one_or_none():raise HTTPException(400,f"Widget {ch} exists")
-    w=SocialWidget(company_id=company_id,channel_name=ch,greeting_message=data.get("greeting_message","Здравствуйте!"),is_active=True)
-    db.add(w)
-    await db.commit()
-    await db.refresh(w)
-    return {"id":w.id,"channel_name":w.channel_name,"url":f"https://bizdnai.com/w/{company_id}/{ch}"}
-
-
-
-@router.get("/{company_id}/leads/stats")
-async def get_leads_stats(company_id: int, db: AsyncSession = Depends(get_db)):
-    """Get leads statistics for company"""
-    from sqlalchemy import func
-    
-    # Total leads count
-    total_result = await db.execute(
-        select(func.count(Lead.id)).where(Lead.company_id == company_id)
-    )
-    total = total_result.scalar() or 0
-    
-    # Count by source
-    source_result = await db.execute(
-        select(Lead.source, func.count(Lead.id))
-        .where(Lead.company_id == company_id)
-        .group_by(Lead.source)
-    )
-    
-    sources = {}
-    for source, count in source_result.all():
-        sources[source or 'unknown'] = count
-    
-    return {
-        "total": total,
-        "by_source": sources
-    }
-
-@router.get("/companies/{company_id}/widgets/{channel_name}")
-async def get_widget_config(company_id: int, channel_name: str, db: AsyncSession = Depends(get_db)):
-    """Get widget configuration by channel name"""
-    result = await db.execute(
-        select(SocialWidget).where(
-            SocialWidget.company_id == company_id,
-            SocialWidget.channel_name == channel_name,
-            SocialWidget.is_active == True
-        )
-    )
-    widget = result.scalar_one_or_none()
-    
-    if not widget:
-        raise HTTPException(status_code=404, detail="Widget not found")
-    
-    return {
-        "id": widget.id,
-        "channel_name": widget.channel_name,
-        "greeting_message": widget.greeting_message,
-        "company_id": widget.company_id
-    }

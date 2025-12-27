@@ -37,6 +37,9 @@ class Company(Base):
     # Relationships
     products = relationship("Product", back_populates="company")
     leads = relationship("Lead", back_populates="company")
+    social_widgets=relationship("SocialWidget",back_populates="company",cascade="all, delete-orphan")
+    social_widgets = relationship("SocialWidget", back_populates="company", cascade="all, delete-orphan")
+
     sales_config = relationship("SalesAgentConfig", back_populates="company", uselist=False)
 
 class Product(Base):
@@ -191,3 +194,14 @@ class UIText(Base):
     language_code = Column(String, index=True)
     text = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class SocialWidget(Base):
+    __tablename__="social_widgets"
+    id=Column(Integer,primary_key=True,index=True)
+    company_id=Column(Integer,ForeignKey("companies.id"),nullable=False)
+    channel_name=Column(String(50),nullable=False,index=True)
+    greeting_message=Column(Text)
+    is_active=Column(Boolean,default=True)
+    created_at=Column(DateTime(timezone=True),server_default=func.now())
+    company=relationship("Company",back_populates="social_widgets")

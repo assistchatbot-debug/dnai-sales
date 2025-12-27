@@ -7,7 +7,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from config import API_BASE_URL
-from states import SalesFlow, ManagerFlow
+from states import SalesFlow
 from keyboards import get_start_keyboard
 
 router = Router()
@@ -37,7 +37,19 @@ async def start_session(user_id: int, company_id: int, new_session: bool = True)
 
 # ... (process_backend_response remains unchanged) ...
 
-
+@router.message(Command('start'))
+async def cmd_start(message: types.Message, state: FSMContext):
+    await state.set_state(SalesFlow.qualifying)
+    company_id = getattr(message.bot, 'company_id', 1)
+    session_id = await start_session(message.from_user.id, company_id)
+    
+    if session_id:
+        await state.update_data(session_id=session_id)
+    
+    await message.answer(
+        "Привет! Я Умный Агент (BizDNAi).\n\n🚀 Я новое поколение корпоративного AI.\n\nЯ помогу подобрать идеальное решение.\nПишите или говорите, и я вам отвечу.\n\nДля смены языка используйте /lang",
+        reply_markup=get_start_keyboard()
+    )
 
 async def process_backend_response(message: types.Message, response_text: str):
     """
@@ -66,15 +78,13 @@ async def process_backend_response(message: types.Message, response_text: str):
 
 @router.message(Command('start'))
 async def cmd_start(message: types.Message, state: FSMContext):
-    # Manager menu with buttons
-    if is_manager(message.from_user.id,message.bot):
-        from aiogram.types import ReplyKeyboardMarkup,KeyboardButton
-        kb=ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📊 Статус"),KeyboardButton(text="📋 Лиды")],[KeyboardButton(text="📢 Каналы"),KeyboardButton(text="🌐 Виджет")],[KeyboardButton(text="❓ Помощь"),KeyboardButton(text="🏠 Меню")]],resize_keyboard=True)
-        await message.answer("🤖 <b>Меню</b>",reply_markup=kb,parse_mode='HTML')
-        return
     await state.set_state(SalesFlow.qualifying)
     await start_session(message.from_user.id)
-    await message.answer("Привет! Я Умный Агент (BizDNAi).\n\n🚀 Я новое поколение корпоративного AI.\n\nЯ помогу подобрать идеальное решение.\nПишите или говорите, и я вам отвечу.\n\nДля смены языка используйте /lang",reply_markup=get_start_keyboard())
+    
+    await message.answer(
+        "Привет! Я Умный Агент (BizDNAi).\n\n🚀 Я новое поколение корпоративного AI.\n\nЯ помогу подобрать идеальное решение.\nПишите или говорите, и я вам отвечу.\n\nДля смены языка используйте /lang",
+        reply_markup=get_start_keyboard()
+    )
 
 @router.message(Command('id'))
 async def cmd_id(message: types.Message):
@@ -210,7 +220,7 @@ async def handle_manager_voice(message: types.Message):
                     if transcribed_text:
                         await message.answer(f"🗣 Вы сказали: {transcribed_text}")
                         # Process as manager command
-                        await process_manager_command(message, transcribed_text, state)
+                        await process_manager_command(message, transcribed_text)
                     else:
                         await message.answer("❌ Не удалось распознать голос")
                 else:
@@ -227,7 +237,7 @@ async def handle_manager_voice(message: types.Message):
             pass
         await message.answer(f"❌ Ошибка: {str(e)}")
 
-async def process_manager_command(message: types.Message, text: str, state: FSMContext):
+async def process_manager_command(message: types.Message, text: str):
     """Process manager text commands"""
     text_lower = text.lower()
     
@@ -280,33 +290,7 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
                             await message.answer("📊 Лидов пока нет")
                             return
                         
-                        # Get ALL leads statistics
-                        async with session.get(
-                            f'{API_BASE_URL}/sales/{company_id}/leads/stats',
-                            timeout=aiohttp.ClientTimeout(total=5)
-                        ) as stats_resp:
-                            stats_data = await stats_resp.json() if stats_resp.status == 200 else {}
-                        
-                        total = stats_data.get('total', len(leads))
-                        by_source = stats_data.get('by_source', {})
-                        
-                        # Build stats
-                        stats_text = "📊 <b>Статистика лидов</b>\n"
-                        stats_text += f"Всего: {total} (все время)\n\n"
-                        
-                        source_emojis = {
-                            'telegram': '📱 Telegram',
-                            'web': '🌐 Веб-сайт',
-                            'instagram': '📸 Instagram',
-                            'facebook': '📘 Facebook',
-                            'vk': '🔵 ВКонтакте'
-                        }
-                        
-                        for source, count in sorted(by_source.items(), key=lambda x: -x[1]):
-                            emoji_name = source_emojis.get(source, f'📍 {source.capitalize()}')
-                            stats_text += f"{emoji_name}: {count}\n"
-                        
-                        leads_text = [stats_text + "\n<b>Последние 5 лидов:</b>\n"]
+                        leads_text = ["📊 <b>Последние лиды:</b>\n"]
                         for i, lead in enumerate(leads[:5], 1):  # Show last 5
                             # Extract name from contact_info, fallback to telegram_id
                             contact = lead.get('contact_info', {})
@@ -339,76 +323,14 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
         except Exception as e:
             await message.answer(f"❌ Ошибка получения лидов: {str(e)[:50]}")
     
-    # Каналы
-    elif 'каналы' in text_lower or 'channels' in text_lower:
-        company_id = message.bot.company_id
-        
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(f'{API_BASE_URL}/sales/companies/{company_id}/widgets') as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        widgets = data.get('widgets', [])
-                        
-                        msg_parts = ["📢 <b>Каналы распространения</b>\n"]
-                        msg_parts.append("📱 Telegram: ✅ Активен")
-                        msg_parts.append("🌐 Widget: ✅ Работает\n")
-                        
-                        # Build inline buttons
-                        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-                        buttons = []
-                        
-                        if widgets:
-                            msg_parts.append("<b>Социальные сети:</b>")
-                            for w in widgets:
-                                channel = w['channel_name'].capitalize()
-                                widget_id = w['id']
-                                msg_parts.append(f"• {channel}")
-                                
-                                buttons.append([
-                                    InlineKeyboardButton(text=f"✏️ {channel}", callback_data=f"edit_widget_{widget_id}"),
-                                    InlineKeyboardButton(text=f"🗑 {channel}", callback_data=f"delete_widget_{widget_id}")
-                                ])
-                        else:
-                            msg_parts.append("<i>Социальных каналов пока нет</i>")
-                        
-                        # Add create button
-                        buttons.append([
-                            InlineKeyboardButton(text="➕ Создать канал", callback_data=f"create_widget_{company_id}")
-                        ])
-                        
-                        keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-                        await message.answer('\n'.join(msg_parts), reply_markup=keyboard, parse_mode='HTML')
-                    else:
-                        await message.answer("⚠️ Не удалось получить список каналов")
-        except Exception as e:
-            logging.error(f"Channels command error: {e}")
-            await message.answer(f"❌ Ошибка: {str(e)[:50]}")
-    
-# Menu button - restart command
-    elif 'меню' in text_lower or 'menu' in text_lower:
-        from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-        kb = ReplyKeyboardMarkup(
-            keyboard=[
-                [KeyboardButton(text="📊 Статус"), KeyboardButton(text="📋 Лиды")],
-                [KeyboardButton(text="📢 Каналы"), KeyboardButton(text="🌐 Виджет")],
-                [KeyboardButton(text="❓ Помощь"), KeyboardButton(text="🏠 Меню")]
-            ],
-            resize_keyboard=True
-        )
-        await message.answer("🏠 <b>Главное меню</b>", reply_markup=kb, parse_mode='HTML')
-    
     # Help
     elif 'помощь' in text_lower or 'help' in text_lower or 'команд' in text_lower:
         await message.answer(
             "📋 <b>Доступные команды:</b>\n\n"
-            "<b>📊 Статус</b> - проверка всех систем\n"
-            "<b>📋 Лиды</b> - просмотр последних лидов\n"
-            "<b>📢 Каналы</b> - список социальных каналов\n"
-            "<b>🌐 Виджет</b> - управление виджетом\n"
-            "<b>создать канал</b> - создать новый канал\n\n"
-            "💡 Также работают голосовые сообщения!\n\n"
-            "Используйте кнопки меню для быстрого доступа.",
+            "<b>статус</b> - полная проверка всех систем\n"
+            "<b>лиды</b> - просмотр последних 5 лидов\n"
+            "<b>помощь</b> - список команд\n\n"
+            "Также работают голосовые сообщения!",
             parse_mode='HTML'
         )
     
@@ -423,93 +345,14 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
             parse_mode='HTML'
         )
 
-
-@router.message(ManagerFlow.entering_channel_name)
-async def process_channel_name(message: types.Message, state: FSMContext):
-    """Process channel name input"""
-    if not is_manager(message.from_user.id, message.bot):
-        await state.clear()
-        return
-    
-    channel_name = message.text.strip()
-    if not channel_name:
-        await message.answer("❌ Название не может быть пустым. Попробуйте ещё раз:")
-        return
-    
-    await state.update_data(channel_name=channel_name)
-    await state.set_state(ManagerFlow.entering_greeting)
-    
-    await message.answer(
-        f"✅ Канал: <b>{channel_name}</b>\n\n"
-        "📝 Введите приветственное сообщение для этого канала\n"
-        "(или напишите 'skip' для стандартного):",
-        parse_mode='HTML'
-    )
-
-@router.message(ManagerFlow.entering_greeting)
-async def process_greeting(message: types.Message, state: FSMContext):
-    """Process greeting and create widget"""
-    if not is_manager(message.from_user.id, message.bot):
-        await state.clear()
-        return
-    
-    greeting = message.text.strip()
-    if greeting.lower() == 'skip':
-        greeting = None
-    
-    data = await state.get_data()
-    channel_name_raw = data.get('channel_name', '')
-    company_id = message.bot.company_id
-    
-    await message.answer("⏳ Создаю канал...")
-    
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f'{API_BASE_URL}/sales/companies/{company_id}/widgets',
-                json={
-                    'channel_name': channel_name_raw,
-                    'greeting_message': greeting
-                },
-                timeout=aiohttp.ClientTimeout(total=10)
-            ) as resp:
-                if resp.status == 200:
-                    result = await resp.json()
-                    url = result.get('url', '')
-                    name = result.get('channel_name', '')
-                    
-                    await message.answer(
-                        f"🎉 <b>Канал создан!</b>\n\n"
-                        f"📱 Название: {channel_name_raw}\n"
-                        f"🔗 URL: {url}\n"
-                        f"💬 Приветствие: {greeting or 'стандартное'}\n\n"
-                        f"Разместите эту ссылку в {channel_name_raw}!",
-                        parse_mode='HTML'
-                    )
-                elif resp.status == 400:
-                    error = await resp.json()
-                    await message.answer(f"⚠️ {error.get('detail', 'Ошибка')}")
-                else:
-                    await message.answer(f"❌ Ошибка {resp.status}")
-    except Exception as e:
-        logging.error(f"Create widget error: {e}")
-        await message.answer(f"❌ Ошибка: {str(e)[:50]}")
-    finally:
-        await state.clear()
-
-
-# === Inline Button Callbacks for Widget Management ===
-
-
 @router.message()
 async def handle_text(message: types.Message, state: FSMContext):
     if message.text.startswith('/'):
         return
     
-    
     # Check if manager - handle commands
     if is_manager(message.from_user.id, message.bot):
-        await process_manager_command(message, message.text, state)
+        await process_manager_command(message, message.text)
         return
 
     user_id = str(message.from_user.id)
@@ -558,64 +401,3 @@ async def handle_text(message: types.Message, state: FSMContext):
             except Exception:
                 pass
             await message.answer("Ошибка соединения.")
-
-
-# === FSM Handlers for Social Widget Creation ===
-
-@router.callback_query(F.data.startswith("create_widget_"))
-async def create_widget_callback(callback: types.CallbackQuery, state: FSMContext):
-    """Handle 'Create Widget' button"""
-    if not is_manager(callback.from_user.id, callback.bot):
-        await callback.answer("❌ Недостаточно прав", show_alert=True)
-        return
-    
-    await state.set_state(ManagerFlow.entering_channel_name)
-    await callback.message.answer(
-        "📝 <b>Создание канала</b>\n\n"
-        "Введите название канала (например: Instagram, Facebook, ВКонтакте):",
-        parse_mode='HTML'
-    )
-    await callback.answer()
-
-@router.callback_query(F.data.startswith("edit_widget_"))
-async def edit_widget_callback(callback: types.CallbackQuery):
-    """Handle 'Edit Widget' button"""
-    if not is_manager(callback.from_user.id, callback.bot):
-        await callback.answer("❌ Недостаточно прав", show_alert=True)
-        return
-    
-    widget_id = callback.data.split("_")[-1]
-    await callback.message.answer(
-        f"✏️ Редактирование канала #{widget_id}\n\n"
-        "🚧 В разработке...",
-        parse_mode='HTML'
-    )
-    await callback.answer()
-
-@router.callback_query(F.data.startswith("delete_widget_"))
-async def delete_widget_callback(callback: types.CallbackQuery):
-    """Handle 'Delete Widget' button"""
-    if not is_manager(callback.from_user.id, callback.bot):
-        await callback.answer("❌ Недостаточно прав", show_alert=True)
-        return
-    
-    widget_id = callback.data.split("_")[-1]
-    company_id = callback.bot.company_id
-    
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.delete(
-                f'{API_BASE_URL}/sales/companies/{company_id}/widgets/{widget_id}',
-                timeout=aiohttp.ClientTimeout(total=10)
-            ) as resp:
-                if resp.status == 200:
-                    await callback.message.answer("✅ Канал удалён")
-                    # Refresh the list
-                    await callback.message.delete()
-                else:
-                    await callback.message.answer(f"❌ Ошибка удаления (код {resp.status})")
-    except Exception as e:
-        logging.error(f"Delete widget error: {e}")
-        await callback.message.answer(f"❌ Ошибка: {str(e)[:50]}")
-    
-    await callback.answer()
