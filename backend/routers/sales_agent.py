@@ -827,7 +827,9 @@ async def get_all_companies(db: AsyncSession = Depends(get_db)):
             'bot_token': c.bot_token,
             'manager_chat_id': c.manager_chat_id,
             'ai_endpoint': c.ai_endpoint,
-            'ai_api_key': c.ai_api_key
+            'ai_api_key': c.ai_api_key,
+            'tier': c.tier,
+            'tier_expiry': c.tier_expiry.isoformat() if c.tier_expiry else None
         } for c in companies]
     except Exception as e:
         logging.error(f'Get all companies error: {e}')
@@ -835,6 +837,23 @@ async def get_all_companies(db: AsyncSession = Depends(get_db)):
 
 
 from services.transliterate import transliterate_to_english
+
+@router.patch('/companies/{company_id}/tier')
+async def update_company_tier(company_id: int, tier_data: dict, db: AsyncSession = Depends(get_db)):
+    from sqlalchemy import select
+    result = await db.execute(select(Company).where(Company.id == company_id))
+    company = result.scalars().first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    if 'tier' in tier_data:
+        company.tier = tier_data['tier']
+    if 'tier_expiry' in tier_data:
+        from datetime import datetime
+        expiry = tier_data['tier_expiry']
+        if expiry and isinstance(expiry, str):
+            company.tier_expiry = datetime.fromisoformat(expiry.replace('Z', '+00:00'))
+    await db.commit()
+    return {'id': company.id, 'tier': company.tier, 'tier_expiry': str(company.tier_expiry) if company.tier_expiry else None}
 
 @router.get("/companies/{company_id}/widgets")
 async def list_widgets(company_id:int,db:AsyncSession=Depends(get_db)):

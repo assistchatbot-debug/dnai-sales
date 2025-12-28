@@ -32,6 +32,11 @@ class Company(Base):
     
     settings = Column(JSONB, default={})
     default_language = Column(String, default="ru")
+    
+    # Subscription tier
+    tier = Column(String, default="free")  # free, basic, pro, enterprise
+    tier_expiry = Column(DateTime(timezone=True), nullable=True)
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # Relationships
