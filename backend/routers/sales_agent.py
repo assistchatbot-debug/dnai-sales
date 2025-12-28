@@ -182,11 +182,8 @@ async def background_send_notifications(lead_contact: str, history: list, summar
             company_email = company.email
             logging.info(f'📧 Company {company_id}: email={company_email}, manager={company_manager_id}')
         else:
-            import os
-            company_bot_token = os.getenv('BOT_TOKEN')
-            company_manager_id = os.getenv('MANAGER_CHAT_ID')
-            company_email = os.getenv('MANAGER_EMAIL', 'kabzhanov@mail.ru')
-            logging.warning(f'⚠️ Company {company_id} not found, using .env fallback')
+            logging.error(f'❌ Company {company_id} not found in database - cannot send notifications')
+            return  # Don't send notifications if company not found
         
         # Send to Telegram using company's bot and manager
         try:

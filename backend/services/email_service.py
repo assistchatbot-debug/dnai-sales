@@ -25,7 +25,7 @@ class EmailService:
             return False
 
         try:
-            logging.info(f'📧 Sending email notification to {self.manager_email}...')
+            logging.info(f'📧 Sending email notification to {to_email or self.manager_email}...')
             
             # Format conversation history
             conversation_text = '\n\n'.join([
@@ -37,7 +37,7 @@ class EmailService:
             msg = MIMEMultipart('alternative')
             msg['Subject'] = f'🎯 Новый лид: {lead_contact} - {lead_phone or "телефон не указан"}'  
             msg['From'] = self.smtp_user
-            msg['To'] = self.manager_email
+            msg['To'] = to_email or self.manager_email  # Use company email if provided
 
             # Plain text version
             text_content = f'''Новый лид от BizDNAi
@@ -131,7 +131,7 @@ class EmailService:
                 logging.info(f'📧 Sending message...')
                 server.send_message(msg)
                 
-            logging.info(f'✅ Email notification sent successfully to {self.manager_email}')
+            logging.info(f'✅ Email notification sent successfully to {to_email or self.manager_email}')
             return True
             
         except smtplib.SMTPException as e:
