@@ -12,3 +12,4 @@ class ManagerFlow(StatesGroup):
     entering_widget_domain = State()
     entering_widget_greeting = State()
     editing_widget_greeting = State()
+    editing_widget_domain = State()

@@ -559,9 +559,12 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
                                 msg += f"{status} <b>{domain}</b> (ID: {wid})\n"
                                 msg += f"   {greeting}...\n\n"
                                 
+                                # Toggle button text based on status
+                                toggle_text = "❌ Выкл" if w.get('is_active') else "✅ Вкл"
+                                
                                 buttons.append([
                                     InlineKeyboardButton(text=f"✏️ {domain}", callback_data=f"editwidget_{wid}"),
-                                    InlineKeyboardButton(text="🔄", callback_data=f"togglewidget_{wid}"),
+                                    InlineKeyboardButton(text=toggle_text, callback_data=f"togglewidget_{wid}"),
                                     InlineKeyboardButton(text="🗑", callback_data=f"delwidget_{wid}")
                                 ])
                         else:
@@ -760,6 +763,48 @@ async def process_edit_greeting(message: types.Message, state: FSMContext):
 
 # === GENERAL HANDLER (MUST BE LAST) ===
 
+@router.message(ManagerFlow.editing_widget_domain)
+async def process_edit_domain(message: types.Message, state: FSMContext):
+    """Process editing widget domain"""
+    if not is_manager(message.from_user.id, message.bot):
+        await state.clear()
+        return
+    
+    domain = message.text.strip().lower().replace('http://', '').replace('https://', '').replace('www.', '')
+    if not domain or '.' not in domain:
+        await message.answer("❌ Неверный формат домена. Попробуйте ещё раз:")
+        return
+    
+    data = await state.get_data()
+    widget_id = data.get('editing_widget_id', '')
+    company_id = getattr(message.bot, 'company_id', 1)
+    
+    status_msg = await message.answer("⏳ Обновляю домен...")
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.patch(
+                f'{API_BASE_URL}/sales/{company_id}/web-widgets/{widget_id}',
+                json={'domain': domain},
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as resp:
+                if resp.status == 200:
+                    result = await resp.json()
+                    await status_msg.delete()
+                    await message.answer(
+                        f"✅ <b>Домен обновлён!</b>\n\n"
+                        f"🌐 Новый домен: {domain}",
+                        parse_mode='HTML'
+                    )
+                else:
+                    await status_msg.delete()
+                    await message.answer("❌ Ошибка обновления домена")
+    except Exception as e:
+        await status_msg.delete()
+        await message.answer(f"❌ Ошибка: {str(e)[:100]}")
+    finally:
+        await state.clear()
+
 @router.message()
 async def handle_text(message: types.Message, state: FSMContext):
     if message.text.startswith('/'):
@@ -884,7 +929,32 @@ async def delete_widget_callback(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("editwidget_"))
 async def edit_webwidget_callback(callback: types.CallbackQuery, state: FSMContext):
-    """Edit web widget greeting"""
+    """Show edit menu for web widget"""
+    if not is_manager(callback.from_user.id, callback.bot):
+        await callback.answer("❌ Недостаточно прав", show_alert=True)
+        return
+    
+    widget_id = callback.data.split("_")[1]
+    
+    # Show submenu
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💬 Изменить приветствие", callback_data=f"editgreeting_{widget_id}")],
+        [InlineKeyboardButton(text="🌐 Изменить домен", callback_data=f"editdomain_{widget_id}")],
+        [InlineKeyboardButton(text="« Назад", callback_data=f"back_to_widgets")]
+    ])
+    
+    await callback.message.edit_text(
+        f"✏️ <b>Редактирование виджета #{widget_id}</b>\n\n"
+        "Выберите что хотите изменить:",
+        reply_markup=keyboard,
+        parse_mode='HTML'
+    )
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("editgreeting_"))
+async def edit_greeting_callback(callback: types.CallbackQuery, state: FSMContext):
+    """Start editing greeting"""
     if not is_manager(callback.from_user.id, callback.bot):
         await callback.answer("❌ Недостаточно прав", show_alert=True)
         return
@@ -894,11 +964,40 @@ async def edit_webwidget_callback(callback: types.CallbackQuery, state: FSMConte
     await state.set_state(ManagerFlow.editing_widget_greeting)
     
     await callback.message.answer(
-        f"✏️ <b>Редактирование виджета #{widget_id}</b>\n\n"
+        f"💬 <b>Изменение приветствия виджета #{widget_id}</b>\n\n"
         "Введите новое приветствие на русском:\n"
         "(AI переведёт на все языки)",
         parse_mode='HTML'
     )
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("editdomain_"))
+async def edit_domain_callback(callback: types.CallbackQuery, state: FSMContext):
+    """Start editing domain"""
+    if not is_manager(callback.from_user.id, callback.bot):
+        await callback.answer("❌ Недостаточно прав", show_alert=True)
+        return
+    
+    widget_id = callback.data.split("_")[1]
+    await state.update_data(editing_widget_id=widget_id)
+    await state.set_state(ManagerFlow.editing_widget_domain)
+    
+    await callback.message.answer(
+        f"🌐 <b>Изменение домена виджета #{widget_id}</b>\n\n"
+        "Введите новый домен (например: example.com):",
+        parse_mode='HTML'
+    )
+    await callback.answer()
+
+@router.callback_query(F.data == "back_to_widgets")
+async def back_to_widgets_callback(callback: types.CallbackQuery):
+    """Return to widgets list"""
+    if not is_manager(callback.from_user.id, callback.bot):
+        await callback.answer("❌ Недостаточно прав", show_alert=True)
+        return
+    
+    # Trigger widgets command
+    await callback.message.delete()
     await callback.answer()
 
 @router.callback_query(F.data.startswith("togglewidget_"))
@@ -958,3 +1057,4 @@ async def create_webwidget_callback(callback: types.CallbackQuery, state: FSMCon
         parse_mode='HTML'
     )
     await callback.answer()
+

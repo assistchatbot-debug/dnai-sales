@@ -880,13 +880,14 @@ async def delete_web_widget(company_id: int, widget_id: int, db: AsyncSession = 
 
 @router.patch('/{company_id}/web-widgets/{widget_id}')
 async def update_web_widget(company_id: int, widget_id: int, request: Request, db: AsyncSession = Depends(get_db)):
-    """Update widget greeting"""
+    """Update widget greeting or domain"""
     try:
         data = await request.json()
-        greeting_ru = data.get('greeting_ru', '').strip()
+        greeting_ru = data.get('greeting_ru', '').strip() if data.get('greeting_ru') else None
+        domain = data.get('domain', '').strip() if data.get('domain') else None
         
-        if not greeting_ru:
-            raise HTTPException(status_code=400, detail='greeting_ru required')
+        if not greeting_ru and not domain:
+            raise HTTPException(status_code=400, detail='greeting_ru or domain required')
         
         result = await db.execute(
             select(WebWidget)
@@ -897,7 +898,14 @@ async def update_web_widget(company_id: int, widget_id: int, request: Request, d
         if not widget:
             raise HTTPException(status_code=404, detail='Widget not found')
         
-        widget.greeting_ru = greeting_ru
+        # Update greeting if provided
+        if greeting_ru:
+            widget.greeting_ru = greeting_ru
+        
+        # Update domain if provided
+        if domain:
+            widget.domain = domain
+        
         await db.commit()
         
         return {'id': widget.id, 'domain': widget.domain, 'greeting_ru': widget.greeting_ru}
