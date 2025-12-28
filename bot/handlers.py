@@ -69,7 +69,8 @@ async def cmd_start(message: types.Message, state: FSMContext):
         await message.answer("🤖 <b>Меню</b>",reply_markup=kb,parse_mode='HTML')
         return
     await state.set_state(SalesFlow.qualifying)
-    await start_session(message.from_user.id, company_id=1)
+    company_id = getattr(message.bot, 'company_id', 1)
+    await start_session(message.from_user.id, company_id=company_id)
     
     # Language selection buttons
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -146,7 +147,7 @@ async def handle_contact(message: types.Message, state: FSMContext):
 async def handle_voice(message: types.Message, state: FSMContext):
     # Check if manager - handle separately
     if is_manager(message.from_user.id, message.bot):
-        await handle_manager_voice(message)
+        await handle_manager_voice(message, state)
         return
     
     user_id = str(message.from_user.id)
@@ -172,7 +173,8 @@ async def handle_voice(message: types.Message, state: FSMContext):
     session_id = data.get("session_id")
     
     if not session_id:
-        session_id = await start_session(message.from_user.id, company_id=1)
+        company_id = getattr(message.bot, 'company_id', 1)
+        session_id = await start_session(message.from_user.id, company_id=company_id)
         if session_id:
             await state.update_data(session_id=session_id)
     
@@ -234,7 +236,7 @@ async def handle_voice(message: types.Message, state: FSMContext):
             pass
         await message.answer("Произошла ошибка при обработке голоса.")
 
-async def handle_manager_voice(message: types.Message):
+async def handle_manager_voice(message: types.Message, state: FSMContext):
     """Handle voice messages from manager"""
     status_msg = await message.answer("🎤 Обрабатываю голосовое сообщение...")
     
@@ -246,11 +248,12 @@ async def handle_manager_voice(message: types.Message):
         file_data.seek(0)
         
         # Prepare form data for transcription
-        data = aiohttp.FormData()
-        data.add_field('file', file_data, filename='voice.ogg', content_type='audio/ogg')
-        data.add_field('session_id', 'manager_voice')
-        data.add_field('user_id', str(message.from_user.id))
-        data.add_field('username', 'manager')
+        data_form = aiohttp.FormData()
+        data_form.add_field('file', file_data, filename='voice.ogg', content_type='audio/ogg')
+        data_form.add_field('session_id', 'manager_voice')
+        data_form.add_field('user_id', str(message.from_user.id))
+        data_form.add_field('username', 'manager')
+        data_form.add_field('language', 'ru')  # Manager default language
         
         company_id = getattr(message.bot, 'company_id', 1)
         async with aiohttp.ClientSession() as session:
@@ -265,15 +268,8 @@ async def handle_manager_voice(message: types.Message):
                         pass
                     
                     if transcribed_text:
-                        you_said_text = {
-                            'ru': '🗣 Вы сказали:',
-                            'en': '🗣 You said:',
-                            'kz': '🗣 Сіз айттыңыз:',
-                            'ky': '🗣 Сиз айттыңыз:',
-                            'uz': '🗣 Siz aytdingiz:',
-                            'uk': '🗣 Ви сказали:'
-                        }
-                        await message.answer(f"{you_said_text.get(language, '🗣 Вы сказали:')} {transcribed_text}")
+                        # Show transcription
+                        await message.answer(f"🗣 {transcribed_text}")
                         # Process as manager command
                         await process_manager_command(message, transcribed_text, state)
                     else:
@@ -322,7 +318,7 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
         await message.answer('\n'.join(status_parts), parse_mode='HTML')
     
     elif 'лиды за неделю' in text_lower:
-        company_id=1
+        company_id = getattr(message.bot, 'company_id', 1)
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(f'{API_BASE_URL}/sales/{company_id}/leads',params={'limit':100},timeout=aiohttp.ClientTimeout(total=10)) as resp:
@@ -354,7 +350,7 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
             logging.error(f"Week leads error: {e}")
             await message.answer("❌ Ошибка")
     elif 'лиды за месяц' in text_lower:
-        company_id=1
+        company_id = getattr(message.bot, 'company_id', 1)
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(f'{API_BASE_URL}/sales/{company_id}/leads',params={'limit':200},timeout=aiohttp.ClientTimeout(total=10)) as resp:
@@ -817,9 +813,22 @@ async def handle_text(message: types.Message, state: FSMContext):
     user_id = str(message.from_user.id)
     username = message.from_user.username or f"user_{user_id}"
     
-    status_msg = await message.answer("⏳ Думаю...")
+    # Get language for status message
+    state_data = await state.get_data()
+    language = state_data.get('language', 'ru')
     
-    data = await state.get_data()
+    status_messages = {
+        'ru': '⏳ Думаю...',
+        'en': '⏳ Thinking...',
+        'kz': '⏳ Ойланудамын...',
+        'ky': '⏳ Ойлонуп жатам...',
+        'uz': '⏳ O\'ylayapman...',
+        'uk': '⏳ Думаю...'
+    }
+    
+    status_msg = await message.answer(status_messages.get(language, '⏳ Думаю...'))
+    
+    data = state_data
     session_id = data.get("session_id")
     
     if not session_id:
