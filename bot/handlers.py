@@ -559,8 +559,8 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
                                 msg += f"{status} <b>{domain}</b> (ID: {wid})\n"
                                 msg += f"   {greeting}...\n\n"
                                 
-                                # Toggle button text based on status
-                                toggle_text = "❌ Выкл" if w.get('is_active') else "✅ Вкл"
+                                # Button shows current status
+                                toggle_text = "✅ ON" if w.get('is_active') else "❌ OFF"
                                 
                                 buttons.append([
                                     InlineKeyboardButton(text=f"✏️ {domain}", callback_data=f"editwidget_{wid}"),
@@ -1017,6 +1017,40 @@ async def toggle_webwidget_callback(callback: types.CallbackQuery):
                     result = await resp.json()
                     status = '✅ Включен' if result.get('is_active') else '❌ Выключен'
                     await callback.answer(f"Статус: {status}", show_alert=True)
+                    
+                    # Refresh widget list with updated status
+                    async with session.get(f'{API_BASE_URL}/sales/{company_id}/web-widgets') as resp2:
+                        if resp2.status == 200:
+                            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                            widgets = await resp2.json()
+                            msg = "🌐 <b>Веб-виджеты</b>\n\n"
+                            buttons = []
+                            
+                            if widgets:
+                                for w in widgets:
+                                    status_icon = '✅' if w.get('is_active') else '❌'
+                                    wid = w['id']
+                                    domain = w['domain']
+                                    greeting = w.get('greeting_ru', 'Не установлено')[:30]
+                                    msg += f"{status_icon} <b>{domain}</b> (ID: {wid})\n"
+                                    msg += f"   {greeting}...\n\n"
+                                    
+                                    # Button shows current status
+                                    toggle_text = "✅ ON" if w.get('is_active') else "❌ OFF"
+                                    
+                                    buttons.append([
+                                        InlineKeyboardButton(text=f"✏️ {domain}", callback_data=f"editwidget_{wid}"),
+                                        InlineKeyboardButton(text=toggle_text, callback_data=f"togglewidget_{wid}"),
+                                        InlineKeyboardButton(text="🗑", callback_data=f"delwidget_{wid}")
+                                    ])
+                            else:
+                                msg += "Виджетов пока нет\n"
+                            
+                            buttons.append([InlineKeyboardButton(text="➕ Создать виджет", callback_data=f"createwidget_{company_id}")])
+                            keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+                            
+                            # Update message with new buttons
+                            await callback.message.edit_text(msg, reply_markup=keyboard, parse_mode='HTML')
                 else:
                     await callback.answer("❌ Ошибка", show_alert=True)
     except Exception as e:
