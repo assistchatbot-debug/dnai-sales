@@ -38,7 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.future import select
 from database import get_db
-from models import SalesAgentConfig, ProductSelectionSession, VoiceMessage, Lead, Interaction, UserPreference, Company, SocialWidget
+from models import SalesAgentConfig, ProductSelectionSession, VoiceMessage, Lead, Interaction, UserPreference, Company, SocialWidget, WebWidget
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 import uuid
@@ -747,6 +747,190 @@ async def get_company_info(company_id: int, db: AsyncSession = Depends(get_db)):
         'company_name': company.name or 'BizDNAi',
         'description': company.description
     }
+
+
+@router.get('/widget/config')
+async def get_widget_config(request: Request, db: AsyncSession = Depends(get_db)):
+    """Get web widget config by domain from Referer header"""
+    try:
+        from urllib.parse import urlparse
+        from models import WebWidget
+        
+        referer = request.headers.get('referer', '')
+        if not referer:
+            raise HTTPException(status_code=400, detail='Referer header required')
+        
+        domain = urlparse(referer).netloc.replace('www.', '')
+        if not domain:
+            raise HTTPException(status_code=400, detail='Invalid referer')
+        
+        result = await db.execute(
+            select(WebWidget).where(WebWidget.domain == domain).where(WebWidget.is_active == True)
+        )
+        widget = result.scalars().first()
+        
+        if not widget:
+            raise HTTPException(status_code=404, detail=f'Widget not found for domain: {domain}')
+        
+        result = await db.execute(select(Company).where(Company.id == widget.company_id))
+        company = result.scalars().first()
+        
+        if not company:
+            raise HTTPException(status_code=404, detail='Company not found')
+        
+        return {
+            'company_id': company.id,
+            'company_name': company.name,
+            'logo_url': company.logo_url or 'https://bizdnai.com/logo.png',
+            'greetings': {
+                'ru': widget.greeting_ru,
+                'en': widget.greeting_en,
+                'kz': widget.greeting_kz,
+                'ky': widget.greeting_ky,
+                'uz': widget.greeting_uz,
+                'uk': widget.greeting_uk
+            },
+            'widget_enabled': widget.is_active
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f'Get widget config error: {e}')
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============= Web Widget Management Endpoints =============
+
+@router.get('/{company_id}/web-widgets')
+async def list_web_widgets(company_id: int, db: AsyncSession = Depends(get_db)):
+    """List all web widgets for company"""
+    try:
+        result = await db.execute(
+            select(WebWidget)
+            .where(WebWidget.company_id == company_id)
+            .order_by(WebWidget.created_at.desc())
+        )
+        widgets = result.scalars().all()
+        return [{
+            'id': w.id,
+            'domain': w.domain if hasattr(w, 'domain') else None,
+            'greeting_ru': w.greeting_ru if hasattr(w, 'greeting_ru') else None,
+            'is_active': w.is_active,
+            'created_at': w.created_at.isoformat() if w.created_at else None
+        } for w in widgets]
+    except Exception as e:
+        logging.error(f'List widgets error: {e}')
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post('/{company_id}/web-widgets')
+async def create_web_widget(company_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    """Create new web widget"""
+    try:
+        data = await request.json()
+        domain = data.get('domain', '').strip().lower()
+        greeting_ru = data.get('greeting_ru', '').strip()
+        
+        if not domain or not greeting_ru:
+            raise HTTPException(status_code=400, detail='Domain and greeting_ru required')
+        
+        # Create widget (using SocialWidget model for now)
+        widget = WebWidget(
+            company_id=company_id,
+            domain=domain,
+            greeting_ru=greeting_ru,  # Using channel_name as domain
+            is_active=True
+        )
+        
+        db.add(widget)
+        await db.commit()
+        await db.refresh(widget)
+        
+        return {'id': widget.id, 'domain': domain, 'message': 'Widget created'}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f'Create widget error: {e}')
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete('/{company_id}/web-widgets/{widget_id}')
+async def delete_web_widget(company_id: int, widget_id: int, db: AsyncSession = Depends(get_db)):
+    """Delete web widget"""
+    try:
+        result = await db.execute(
+            select(WebWidget)
+            .where(WebWidget.id == widget_id)
+            .where(WebWidget.company_id == company_id)
+        )
+        widget = result.scalars().first()
+        if not widget:
+            raise HTTPException(status_code=404, detail='Widget not found')
+        
+        await db.delete(widget)
+        await db.commit()
+        
+        return {'message': 'Widget deleted'}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f'Delete widget error: {e}')
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.patch('/{company_id}/web-widgets/{widget_id}')
+async def update_web_widget(company_id: int, widget_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    """Update widget greeting"""
+    try:
+        data = await request.json()
+        greeting_ru = data.get('greeting_ru', '').strip()
+        
+        if not greeting_ru:
+            raise HTTPException(status_code=400, detail='greeting_ru required')
+        
+        result = await db.execute(
+            select(WebWidget)
+            .where(WebWidget.id == widget_id)
+            .where(WebWidget.company_id == company_id)
+        )
+        widget = result.scalars().first()
+        if not widget:
+            raise HTTPException(status_code=404, detail='Widget not found')
+        
+        widget.greeting_ru = greeting_ru
+        await db.commit()
+        
+        return {'id': widget.id, 'domain': widget.domain, 'greeting_ru': widget.greeting_ru}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f'Update widget error: {e}')
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch('/{company_id}/web-widgets/{widget_id}/toggle')
+async def toggle_web_widget(company_id: int, widget_id: int, db: AsyncSession = Depends(get_db)):
+    """Toggle widget active status"""
+    try:
+        result = await db.execute(
+            select(WebWidget)
+            .where(WebWidget.id == widget_id)
+            .where(WebWidget.company_id == company_id)
+        )
+        widget = result.scalars().first()
+        if not widget:
+            raise HTTPException(status_code=404, detail='Widget not found')
+        
+        widget.is_active = not widget.is_active
+        await db.commit()
+        
+        return {'id': widget.id, 'domain': widget.domain, 'is_active': widget.is_active}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f'Toggle widget error: {e}')
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get('/health/db')
 async def check_db_health(db: AsyncSession = Depends(get_db)):

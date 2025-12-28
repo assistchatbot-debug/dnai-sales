@@ -35,10 +35,6 @@ async def start_session(user_id: int, company_id: int, new_session: bool = True)
             logging.error(f'Session start error: {e}')
             return None
 
-# ... (process_backend_response remains unchanged) ...
-
-
-
 async def process_backend_response(message: types.Message, response_text: str):
     """
     Helper to process backend response: check for contact request, 
@@ -69,7 +65,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     # Manager menu with buttons
     if is_manager(message.from_user.id,message.bot):
         from aiogram.types import ReplyKeyboardMarkup,KeyboardButton
-        kb=ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📊 Статус"),KeyboardButton(text="📋 Лиды")],[KeyboardButton(text="📢 Каналы")],[KeyboardButton(text="📊 Лиды за неделю"),KeyboardButton(text="📊 Лиды за месяц")],[KeyboardButton(text="🏠 Меню")]],resize_keyboard=True)
+        kb=ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📊 Статус"),KeyboardButton(text="📋 Лиды")],[KeyboardButton(text="📢 Каналы"),KeyboardButton(text="🌐 Виджет")],[KeyboardButton(text="📊 Лиды за неделю"),KeyboardButton(text="📊 Лиды за месяц")],[KeyboardButton(text="🏠 Меню")]],resize_keyboard=True)
         await message.answer("🤖 <b>Меню</b>",reply_markup=kb,parse_mode='HTML')
         return
     await state.set_state(SalesFlow.qualifying)
@@ -92,8 +88,6 @@ async def cmd_start(message: types.Message, state: FSMContext):
         "Выберите язык / Choose language:",
         reply_markup=lang_kb
     )
-
-
 
 @router.callback_query(F.data.startswith("lang_"))
 async def set_language_callback(callback: types.CallbackQuery, state: FSMContext):
@@ -302,14 +296,12 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
     """Process manager text commands"""
     text_lower = text.lower()
     
-    # Enhanced status check with real system verification
     if 'статус' in text_lower or 'status' in text_lower:
         company_id = getattr(message.bot, 'company_id', 1)
         logging.info(f"🏢 MULTITENANCY: Manager checking status for company {company_id}")
         
         status_parts = ["📊 <b>Статус системы</b>\n"]
         
-        # Check AI Agent (chat endpoint)
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
@@ -327,13 +319,8 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
         
         status_parts.append("🤖 Telegram Bot - активен (polling)")
         
-        # Widget status - show only if company has widget configured
-        # TODO: Add widget status check from company config
-        
         await message.answer('\n'.join(status_parts), parse_mode='HTML')
     
-    # View recent leads
-    # Leads by period (must be before general 'лиды' handler)
     elif 'лиды за неделю' in text_lower:
         company_id=1
         try:
@@ -417,7 +404,6 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
                             await message.answer("📊 Лидов пока нет")
                             return
                         
-                        # Get ALL leads statistics
                         async with session.get(
                             f'{API_BASE_URL}/sales/{company_id}/leads/stats',
                             timeout=aiohttp.ClientTimeout(total=5)
@@ -427,7 +413,6 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
                         total = stats_data.get('total', len(leads))
                         by_source = stats_data.get('by_source', {})
                         
-                        # Build stats
                         stats_text = "📊 <b>Статистика лидов</b>\n"
                         stats_text += f"Всего: {total} (все время)\n\n"
                         
@@ -439,12 +424,11 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
                             'vk': '🔵 ВКонтакте'
                         }
                         
-                        # Sort: named channels first, then widget IDs
                         def sort_key(item):
                             source = item[0]
                             if source.isdigit():
-                                return (1, int(source))  # Widget IDs second
-                            return (0, source.lower())  # Named channels first
+                                return (1, int(source))
+                            return (0, source.lower())
                         
                         for source, count in sorted(by_source.items(), key=sort_key):
                             if source.isdigit():
@@ -454,21 +438,18 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
                             stats_text += f"{emoji_name}: {count}\n"
                         
                         leads_text = [stats_text + "\n<b>Последние 5 лидов:</b>\n"]
-                        for i, lead in enumerate(leads[:5], 1):  # Show last 5
-                            # Extract name from contact_info, fallback to telegram_id
+                        for i, lead in enumerate(leads[:5], 1):
                             contact = lead.get('contact_info', {})
                             name = contact.get('name') if isinstance(contact, dict) else None
                             telegram_id = lead.get('telegram_user_id', '?')
                             phone = contact.get('phone', 'нет') if isinstance(contact, dict) else 'нет'
                             
-                            # Display name if available, otherwise show User ID
                             display_name = name if name else f"User {telegram_id}"
                             
                             status = lead.get('status', 'new')
                             source = lead.get('source', 'unknown')
                             created = lead.get('created_at', '')[:16]
                             
-                            # Get temperature, default to warm
                             temp = contact.get('temperature', '🌤 теплый') if isinstance(contact, dict) else '🌤 теплый'
                             
                             leads_text.append(
@@ -486,7 +467,6 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
         except Exception as e:
             await message.answer(f"❌ Ошибка получения лидов: {str(e)[:50]}")
     
-    # Каналы
     elif 'каналы' in text_lower or 'channels' in text_lower:
         company_id = message.bot.company_id
         
@@ -501,7 +481,6 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
                         msg_parts.append("📱 Telegram: ✅ Активен")
                         msg_parts.append("🌐 Widget: ✅ Работает\n")
                         
-                        # Build inline buttons
                         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
                         buttons = []
                         
@@ -511,7 +490,7 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
                                 channel_name = w['channel_name']
                                 channel_display = channel_name.capitalize()
                                 widget_id = w['id']
-                                widget_url = f"https://bizdnai.com/w/{company_id}/{widget_id}"  # Always use ID
+                                widget_url = f"https://bizdnai.com/w/{company_id}/{widget_id}"
                                 
                                 msg_parts.append(f"• {channel_display} (ID: {widget_id})")
                                 msg_parts.append(f"  🔗 {widget_url}")
@@ -523,7 +502,6 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
                         else:
                             msg_parts.append("<i>Социальных каналов пока нет</i>")
                         
-                        # Add create button
                         buttons.append([
                             InlineKeyboardButton(text="➕ Создать канал", callback_data=f"create_widget_{company_id}")
                         ])
@@ -536,13 +514,12 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
             logging.error(f"Channels command error: {e}")
             await message.answer(f"❌ Ошибка: {str(e)[:50]}")
     
-# Menu button - restart command
     elif 'меню' in text_lower or 'menu' in text_lower:
         from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
         kb = ReplyKeyboardMarkup(
             keyboard=[
                 [KeyboardButton(text="📊 Статус"), KeyboardButton(text="📋 Лиды")],
-                [KeyboardButton(text="📢 Каналы")],
+                [KeyboardButton(text="📢 Каналы"), KeyboardButton(text="🌐 Виджет")],
                 [KeyboardButton(text="📊 Лиды за неделю"), KeyboardButton(text="📊 Лиды за месяц")],
                 [KeyboardButton(text="🏠 Меню")]
             ],
@@ -550,30 +527,56 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
         )
         await message.answer("🏠 <b>Главное меню</b>", reply_markup=kb, parse_mode='HTML')
     
-    # Help
     elif 'помощь' in text_lower or 'help' in text_lower or 'команд' in text_lower:
         await message.answer(
             "📋 <b>Доступные команды:</b>\n\n"
             "<b>📊 Статус</b> - проверка всех систем\n"
             "<b>📋 Лиды</b> - просмотр последних лидов\n"
             "<b>📢 Каналы</b> - список социальных каналов\n"
-            
             "<b>создать канал</b> - создать новый канал\n\n"
             "💡 Также работают голосовые сообщения!\n\n"
             "Используйте кнопки меню для быстрого доступа.",
             parse_mode='HTML'
         )
     
-    # Default response
+    elif 'виджет' in text_lower or 'widget' in text_lower:
+        company_id = getattr(message.bot, 'company_id', 1)
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f'{API_BASE_URL}/sales/{company_id}/web-widgets') as resp:
+                    if resp.status == 200:
+                        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                        widgets = await resp.json()
+                        msg = "🌐 <b>Веб-виджеты</b>\n\n"
+                        buttons = []
+                        
+                        if widgets:
+                            for w in widgets:
+                                status = '✅' if w.get('is_active') else '❌'
+                                wid = w['id']
+                                domain = w['domain']
+                                greeting = w.get('greeting_ru', 'Не установлено')[:30]
+                                msg += f"{status} <b>{domain}</b> (ID: {wid})\n"
+                                msg += f"   {greeting}...\n\n"
+                                
+                                buttons.append([
+                                    InlineKeyboardButton(text=f"✏️ {domain}", callback_data=f"editwidget_{wid}"),
+                                    InlineKeyboardButton(text="🔄", callback_data=f"togglewidget_{wid}"),
+                                    InlineKeyboardButton(text="🗑", callback_data=f"delwidget_{wid}")
+                                ])
+                        else:
+                            msg += "Виджетов пока нет\n"
+                        
+                        buttons.append([InlineKeyboardButton(text="➕ Создать виджет", callback_data=f"createwidget_{company_id}")])
+                        keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+                        await message.answer(msg, reply_markup=keyboard, parse_mode='HTML')
+                    else:
+                        await message.answer("⚠️ Ошибка получения виджетов")
+        except Exception as e:
+            await message.answer(f"❌ Ошибка: {str(e)[:50]}")
+    
     else:
-        await message.answer(
-            "👋 Привет!\n\n"
-            "Доступные команды:\n"
-            "• <b>статус</b> - проверка всех систем\n"
-            "• <b>лиды</b> - просмотр последних лидов\n"
-            "• <b>помощь</b> - полная справка",
-            parse_mode='HTML'
-        )
+        pass
 
 
 @router.message(ManagerFlow.entering_channel_name)
@@ -650,16 +653,118 @@ async def process_greeting(message: types.Message, state: FSMContext):
         await state.clear()
 
 
-# === Inline Button Callbacks for Widget Management ===
+# === FSM Handlers for Web Widget (MUST BE BEFORE GENERAL HANDLER) ===
 
+@router.message(ManagerFlow.entering_widget_domain)
+async def process_widget_domain(message: types.Message, state: FSMContext):
+    """Process domain input"""
+    if not is_manager(message.from_user.id, message.bot):
+        await state.clear()
+        return
+    
+    domain = message.text.strip().lower().replace('http://', '').replace('https://', '').replace('www.', '')
+    if not domain or '.' not in domain:
+        await message.answer("❌ Неверный формат. Попробуйте ещё раз:")
+        return
+    
+    await state.update_data(widget_domain=domain)
+    await state.set_state(ManagerFlow.entering_widget_greeting)
+    await message.answer(f"✅ Домен: <b>{domain}</b>\n\nВведите приветствие на русском:", parse_mode='HTML')
+
+@router.message(ManagerFlow.entering_widget_greeting)
+async def process_widget_greeting(message: types.Message, state: FSMContext):
+    """Process greeting and create widget"""
+    if not is_manager(message.from_user.id, message.bot):
+        await state.clear()
+        return
+    
+    greeting_ru = message.text.strip()
+    if not greeting_ru:
+        await message.answer("❌ Приветствие не может быть пустым")
+        return
+    
+    data = await state.get_data()
+    domain = data.get('widget_domain', '')
+    company_id = getattr(message.bot, 'company_id', 1)
+    
+    status_msg = await message.answer("⏳ Создаю виджет...")
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f'{API_BASE_URL}/sales/{company_id}/web-widgets',
+                json={'domain': domain, 'greeting_ru': greeting_ru},
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as resp:
+                if resp.status == 200:
+                    result = await resp.json()
+                    await status_msg.delete()
+                    await message.answer(
+                        f"🎉 <b>Виджет создан!</b>\n\n"
+                        f"🌐 Домен: {domain}\n"
+                        f"💬 Приветствие: {greeting_ru}\n\n"
+                        f"✅ Виджет активен на {domain}",
+                        parse_mode='HTML'
+                    )
+                else:
+                    await status_msg.delete()
+                    await message.answer("❌ Ошибка создания виджета")
+    except Exception as e:
+        await status_msg.delete()
+        await message.answer(f"❌ Ошибка: {str(e)[:100]}")
+    finally:
+        await state.clear()
+
+@router.message(ManagerFlow.editing_widget_greeting)
+async def process_edit_greeting(message: types.Message, state: FSMContext):
+    """Process editing widget greeting"""
+    if not is_manager(message.from_user.id, message.bot):
+        await state.clear()
+        return
+    
+    greeting_ru = message.text.strip()
+    if not greeting_ru:
+        await message.answer("❌ Приветствие не может быть пустым")
+        return
+    
+    data = await state.get_data()
+    widget_id = data.get('editing_widget_id', '')
+    company_id = getattr(message.bot, 'company_id', 1)
+    
+    status_msg = await message.answer("⏳ Обновляю...")
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.patch(
+                f'{API_BASE_URL}/sales/{company_id}/web-widgets/{widget_id}',
+                json={'greeting_ru': greeting_ru},
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as resp:
+                if resp.status == 200:
+                    result = await resp.json()
+                    await status_msg.delete()
+                    await message.answer(
+                        f"✅ <b>Виджет обновлён!</b>\n\n"
+                        f"💬 Новое приветствие: {greeting_ru}",
+                        parse_mode='HTML'
+                    )
+                else:
+                    await status_msg.delete()
+                    await message.answer("❌ Ошибка обновления")
+    except Exception as e:
+        await status_msg.delete()
+        await message.answer(f"❌ Ошибка: {str(e)[:100]}")
+    finally:
+        await state.clear()
+
+
+# === GENERAL HANDLER (MUST BE LAST) ===
 
 @router.message()
 async def handle_text(message: types.Message, state: FSMContext):
     if message.text.startswith('/'):
         return
     
-    
-    # Check if manager - handle commands
     if is_manager(message.from_user.id, message.bot):
         await process_manager_command(message, message.text, state)
         return
@@ -669,7 +774,6 @@ async def handle_text(message: types.Message, state: FSMContext):
     
     status_msg = await message.answer("⏳ Думаю...")
     
-    # Get session_id from state
     data = await state.get_data()
     session_id = data.get("session_id")
     
@@ -682,7 +786,6 @@ async def handle_text(message: types.Message, state: FSMContext):
     company_id = getattr(message.bot, 'company_id', 1)
     async with aiohttp.ClientSession() as session:
         try:
-            # Get language from state
             state_data = await state.get_data()
             language = state_data.get('language', 'ru')
             
@@ -717,7 +820,7 @@ async def handle_text(message: types.Message, state: FSMContext):
             await message.answer("Ошибка соединения.")
 
 
-# === FSM Handlers for Social Widget Creation ===
+# === Callback Handlers ===
 
 @router.callback_query(F.data.startswith("create_widget_"))
 async def create_widget_callback(callback: types.CallbackQuery, state: FSMContext):
@@ -756,7 +859,7 @@ async def delete_widget_callback(callback: types.CallbackQuery):
         await callback.answer("❌ Недостаточно прав", show_alert=True)
         return
     
-    channel_name = callback.data.split("_", 2)[-1]  # Get everything after "delete_widget_"
+    channel_name = callback.data.split("_", 2)[-1]
     company_id = callback.bot.company_id
     
     try:
@@ -767,7 +870,6 @@ async def delete_widget_callback(callback: types.CallbackQuery):
             ) as resp:
                 if resp.status == 200:
                     await callback.message.answer("✅ Канал удалён")
-                    # Refresh the list
                     await callback.message.delete()
                 else:
                     await callback.message.answer(f"❌ Ошибка удаления (код {resp.status})")
@@ -775,4 +877,84 @@ async def delete_widget_callback(callback: types.CallbackQuery):
         logging.error(f"Delete widget error: {e}")
         await callback.message.answer(f"❌ Ошибка: {str(e)[:50]}")
     
+    await callback.answer()
+
+
+# === Web Widget Callback Handlers ===
+
+@router.callback_query(F.data.startswith("editwidget_"))
+async def edit_webwidget_callback(callback: types.CallbackQuery, state: FSMContext):
+    """Edit web widget greeting"""
+    if not is_manager(callback.from_user.id, callback.bot):
+        await callback.answer("❌ Недостаточно прав", show_alert=True)
+        return
+    
+    widget_id = callback.data.split("_")[1]
+    await state.update_data(editing_widget_id=widget_id)
+    await state.set_state(ManagerFlow.editing_widget_greeting)
+    
+    await callback.message.answer(
+        f"✏️ <b>Редактирование виджета #{widget_id}</b>\n\n"
+        "Введите новое приветствие на русском:\n"
+        "(AI переведёт на все языки)",
+        parse_mode='HTML'
+    )
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("togglewidget_"))
+async def toggle_webwidget_callback(callback: types.CallbackQuery):
+    """Toggle web widget active status"""
+    if not is_manager(callback.from_user.id, callback.bot):
+        await callback.answer("❌ Недостаточно прав", show_alert=True)
+        return
+    
+    widget_id = callback.data.split("_")[1]
+    company_id = getattr(callback.bot, 'company_id', 1)
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.patch(f'{API_BASE_URL}/sales/{company_id}/web-widgets/{widget_id}/toggle') as resp:
+                if resp.status == 200:
+                    result = await resp.json()
+                    status = '✅ Включен' if result.get('is_active') else '❌ Выключен'
+                    await callback.answer(f"Статус: {status}", show_alert=True)
+                else:
+                    await callback.answer("❌ Ошибка", show_alert=True)
+    except Exception as e:
+        await callback.answer("❌ Ошибка", show_alert=True)
+
+@router.callback_query(F.data.startswith("delwidget_"))
+async def delete_webwidget_callback(callback: types.CallbackQuery):
+    """Delete web widget"""
+    if not is_manager(callback.from_user.id, callback.bot):
+        await callback.answer("❌ Недостаточно прав", show_alert=True)
+        return
+    
+    widget_id = callback.data.split("_")[1]
+    company_id = getattr(callback.bot, 'company_id', 1)
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.delete(f'{API_BASE_URL}/sales/{company_id}/web-widgets/{widget_id}') as resp:
+                if resp.status == 200:
+                    await callback.answer("✅ Виджет удалён", show_alert=True)
+                    await callback.message.delete()
+                else:
+                    await callback.answer("❌ Ошибка", show_alert=True)
+    except Exception as e:
+        await callback.answer("❌ Ошибка", show_alert=True)
+
+@router.callback_query(F.data.startswith("createwidget_"))
+async def create_webwidget_callback(callback: types.CallbackQuery, state: FSMContext):
+    """Start creating web widget"""
+    if not is_manager(callback.from_user.id, callback.bot):
+        await callback.answer("❌ Недостаточно прав", show_alert=True)
+        return
+    
+    await state.set_state(ManagerFlow.entering_widget_domain)
+    await callback.message.answer(
+        "🌐 <b>Создание веб-виджета</b>\n\n"
+        "Введите домен (например: example.com):",
+        parse_mode='HTML'
+    )
     await callback.answer()

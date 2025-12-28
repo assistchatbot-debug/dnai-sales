@@ -37,6 +37,10 @@ class Company(Base):
     tier = Column(String, default="free")  # free, basic, pro, enterprise
     tier_expiry = Column(DateTime(timezone=True), nullable=True)
     
+    
+    # Relationships
+    web_widgets = relationship("WebWidget", back_populates="company")
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # Relationships
@@ -217,3 +221,23 @@ class SocialWidget(Base):
     is_active=Column(Boolean,default=True)
     created_at=Column(DateTime(timezone=True),server_default=func.now())
     company=relationship("Company",back_populates="social_widgets")
+
+
+class WebWidget(Base):
+    """Web widget for embedding on websites"""
+    __tablename__ = 'web_widgets'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey('companies.id'), nullable=False)
+    domain = Column(Text, nullable=False, index=True)
+    greeting_ru = Column(Text, nullable=True)
+    greeting_en = Column(Text, nullable=True)
+    greeting_kz = Column(Text, nullable=True)
+    greeting_ky = Column(Text, nullable=True)
+    greeting_uz = Column(Text, nullable=True)
+    greeting_uk = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Relationship
+    company = relationship("Company", back_populates="web_widgets")
