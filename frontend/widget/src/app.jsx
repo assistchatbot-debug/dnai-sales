@@ -12,6 +12,7 @@ import { X, Send, Mic, Square } from 'lucide-preact';
 export function App() {
     const [isOpen, setIsOpen] = useState(false);
     const [widgetEnabled, setWidgetEnabled] = useState(true);
+    const [isActive, setIsActive] = useState(true);
     const [language, setLanguage] = useState(localStorage.getItem('bizdnaii_widget_lang') || 'ru');
     const [showTooltip, setShowTooltip] = useState(false);
     const [visitorId, setVisitorId] = useState(localStorage.getItem('bizdnaii_vid') || `v_${Math.random().toString(36).substr(2, 9)}`);
@@ -112,8 +113,13 @@ export function App() {
                 return r.json();
             })
             .then(data => {
+                console.log('🔧 Widget Config:', data);
+                console.log('✅ is_active from backend:', data.is_active);
                 setCompanyId(data.company_id);
                 setWidgetEnabled(data.widget_enabled !== false);
+                setIsActive(data.is_active !== false);
+                console.log('🎯 Widget status set to:', data.is_active !== false);
+                console.log('🔴 Status icon:', data.is_active !== false ? '● (green dot)' : '❌ (red X)');
                 
                 if (data.logo_url) {
                     setCompanyLogo(data.logo_url);
@@ -136,7 +142,7 @@ export function App() {
 
     const handleSend = async () => {
         if (!inputText.trim() || !companyId) return;
-        if (!widgetEnabled) {
+        if (!widgetEnabled || !isActive) {
             setMessages(prev => [...prev, { id: Date.now(), text: 'Виджет временно отключен / Widget temporarily disabled', sender: 'bot', isError: true }]);
             return;
         }
@@ -258,7 +264,10 @@ export function App() {
                             <img src={companyLogo} className="w-8 h-8 rounded-full" alt="" />
                             <div>
                                 <h3 className="font-bold text-sm text-white">BizDNAi</h3>
-                                <span className="text-xs text-green-300 flex items-center gap-1">● {t.online}</span>
+                                <span className="text-xs flex items-center gap-1">
+                                    <span className={isActive ? 'text-green-300' : 'text-red-400'}>{isActive ? '●' : '❌'}</span>
+                                    <span className="text-white">{isActive ? t.online : 'Offline'}</span>
+                                </span>
                             </div>
                         </div>
                         <div className="flex gap-2">
