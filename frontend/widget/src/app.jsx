@@ -259,21 +259,45 @@ export function App() {
         <div className="fixed bottom-4 z-50 font-sans" style={{ right: '40px' }}>
             {isOpen && (
                 <div className="mb-4 w-80 h-[500px] bg-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-700" style={{ marginRight: '-30px' }}>
-                    <div className="bg-indigo-600 p-4 flex justify-between items-center">
-                        <div className="flex items-center gap-2">
-                            <img src={companyLogo} className="w-8 h-8 rounded-full" alt="" />
-                            <div>
-                                <h3 className="font-bold text-sm text-white">BizDNAi</h3>
-                                <span className="text-xs flex items-center gap-1">
-                                    <span className={isActive ? 'text-green-300' : 'text-red-400'}>{isActive ? '●' : '❌'}</span>
-                                    <span className="text-white">{isActive ? t.online : 'Offline'}</span>
-                                </span>
+                    <div className="bg-indigo-600 p-4">
+                        <div className="flex justify-between items-center mb-2">
+                            <div className="flex items-center gap-2">
+                                <img src={companyLogo} className="w-9 h-9 rounded-full" alt="" />
+                                <div>
+                                    <h3 className="font-bold text-sm text-white">BizDNAi</h3>
+                                    <span className="text-xs flex items-center gap-1">
+                                        <span className={isActive ? 'text-green-300' : 'text-red-400'}>{isActive ? '●' : '❌'}</span>
+                                        <span className="text-white">{isActive ? t.online : 'Offline'}</span>
+                                    </span>
+                                </div>
+                            </div>
+                            <div className="flex gap-2">
+                                <button onClick={resetChat} className="hover:bg-white/10 p-1 rounded text-white" title="Новый диалог">🔄</button>
+                                <button onClick={() => setIsOpen(false)} className="text-white"><X size={18} /></button>
                             </div>
                         </div>
-                        <div className="flex gap-2">
-                            <button onClick={resetChat} className="hover:bg-white/10 p-1 rounded text-white" title="Новый диалог">🔄</button>
-                            <button onClick={() => setIsOpen(false)} className="text-white"><X size={18} /></button>
-                        </div>
+                        <select 
+                            value={language}
+                            onChange={(e) => {
+                                const newLang = e.target.value;
+                                setLanguage(newLang);
+                                localStorage.setItem('bizdnaii_widget_lang', newLang);
+                                fetch('/sales/widget/config')
+                                    .then(r => r.json())
+                                    .then(data => {
+                                        if (data.greetings && data.greetings[newLang]) {
+                                            setMessages([{ id: 1, text: data.greetings[newLang], sender: 'bot' }]);
+                                        }
+                                    });
+                            }}
+                            className="w-full p-2 rounded-lg bg-indigo-500/20 border border-indigo-400/40 text-white text-sm">
+                            <option value="ru">🇷🇺 Русский</option>
+                            <option value="en">🇺🇸 English</option>
+                            <option value="kz">🇰🇿 Қазақша</option>
+                            <option value="ky">🇰🇬 Кыргызча</option>
+                            <option value="uz">🇺🇿 O'zbekcha</option>
+                            <option value="uk">🇺🇦 Українська</option>
+                        </select>
                     </div>
                     <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-900/50">
                         {messages.map(m => (
@@ -327,7 +351,10 @@ export function App() {
                 </button>
             </div>
 
-            <style>{`@keyframes ping { 75%, 100% { transform: scale(1.8); opacity: 0; } }`}</style>
+            <style>{`
+                @keyframes ping { 75%, 100% { transform: scale(1.8); opacity: 0; } }
+                select option { background-color: #1e293b; color: white; }
+            `}</style>
         </div>
     )
 }
