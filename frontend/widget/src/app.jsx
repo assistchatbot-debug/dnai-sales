@@ -1,9 +1,9 @@
 /**
- * BizDNAii Widget
- * Version: 4.0
- * Date: 2025-12-11
+ * BizDNAii Widget  
+ * Version: 4.2
+ * Date: 2025-12-28
  * 
- * Changes: Dialog shift left 10px, pointer events for hold-to-record, reset creates new lead
+ * Changes: Domain-based config + all 6 languages
  */
 
 import { useState, useEffect, useRef } from 'preact/hooks';
@@ -15,29 +15,62 @@ export function App() {
     const [language, setLanguage] = useState(localStorage.getItem('bizdnaii_widget_lang') || 'ru');
     const [showTooltip, setShowTooltip] = useState(false);
     const [visitorId, setVisitorId] = useState(localStorage.getItem('bizdnaii_vid') || `v_${Math.random().toString(36).substr(2, 9)}`);
+    const [companyLogo, setCompanyLogo] = useState('https://bizdnai.com/logo.png');
+    const [companyId, setCompanyId] = useState(null);
 
     const texts = {
         ru: {
-            intro: 'Здравствуйте!\nЯ умный помощник BizDNAi.\n\nАвтоматизация бизнеса: Маркетинг, Финансы, Продажи...',
             placeholder: 'Сообщение...',
             thinking: 'Думаю...',
             error: 'Ошибка сервера',
             online: 'Online',
-            tooltip: 'Напишите нам...'
+            tooltip: 'Напишите нам...',
+            notConfigured: '⚠️ Приветствие не настроено.\nОбратитесь к администратору.'
         },
         en: {
-            intro: 'Hello!\nI am the smart assistant of BizDNAi.\n\nBusiness automation: Marketing, Finance, Sales...',
             placeholder: 'Message...',
             thinking: 'Thinking...',
             error: 'Server error',
             online: 'Online',
-            tooltip: 'Write to us...'
+            tooltip: 'Write to us...',
+            notConfigured: '⚠️ Greeting not configured.\nContact administrator.'
+        },
+        kz: {
+            placeholder: 'Хабарлама...',
+            thinking: 'Ойланамын...',
+            error: 'Сервер қатесі',
+            online: 'Онлайн',
+            tooltip: 'Бізге жазыңыз...',
+            notConfigured: '⚠️ Сәлемдесу орнатылмаған.\nӘкімшіге хабарласыңыз.'
+        },
+        ky: {
+            placeholder: 'Билдирүү...',
+            thinking: 'Ойлонуп жатам...',
+            error: 'Сервер катасы',
+            online: 'Онлайн',
+            tooltip: 'Бизге жазыңыз...',
+            notConfigured: '⚠️ Саламдашуу коюлган эмес.\nАдминге кайрылыңыз.'
+        },
+        uz: {
+            placeholder: 'Xabar...',
+            thinking: 'O\'ylayapman...',
+            error: 'Server xatosi',
+            online: 'Onlayn',
+            tooltip: 'Bizga yozing...',
+            notConfigured: '⚠️ Salomlashish sozlanmagan.\nAdministratorga murojaat qiling.'
+        },
+        uk: {
+            placeholder: 'Повідомлення...',
+            thinking: 'Думаю...',
+            error: 'Помилка сервера',
+            online: 'Онлайн',
+            tooltip: 'Напишіть нам...',
+            notConfigured: '⚠️ Вітання не налаштоване.\nЗверніться до адміністратора.'
         }
     };
 
     const t = texts[language] || texts.ru;
-
-    const [messages, setMessages] = useState([{ id: 1, text: t.intro, sender: 'bot' }]);
+    const [messages, setMessages] = useState([]);
     const [inputText, setInputText] = useState("");
     const [isRecording, setIsRecording] = useState(false);
     const [isTyping, setIsTyping] = useState(false);
@@ -61,31 +94,48 @@ export function App() {
         const handleLangChange = (e) => {
             const newLang = e.detail?.language || 'ru';
             setLanguage(newLang);
-            setMessages([{ id: 1, text: texts[newLang]?.intro || texts.ru.intro, sender: 'bot' }]);
         };
         window.addEventListener('bizdnaii-language-change', handleLangChange);
         const storedLang = localStorage.getItem('bizdnaii_widget_lang');
         if (storedLang && storedLang !== language) {
             setLanguage(storedLang);
-            setMessages([{ id: 1, text: texts[storedLang]?.intro || texts.ru.intro, sender: 'bot' }]);
         }
         return () => window.removeEventListener('bizdnaii-language-change', handleLangChange);
     }, []);
 
     useEffect(() => { localStorage.setItem('bizdnaii_vid', visitorId); }, [visitorId]);
-    // Check if widget is enabled
+    
     useEffect(() => {
-        fetch('/sales/1/widget-enabled')
-            .then(r => r.json())
-            .then(data => setWidgetEnabled(data.enabled !== false))
-            .catch(() => setWidgetEnabled(true));
-    }, []);
+        fetch('/sales/widget/config')
+            .then(r => {
+                if (!r.ok) throw new Error('Widget not found');
+                return r.json();
+            })
+            .then(data => {
+                setCompanyId(data.company_id);
+                setWidgetEnabled(data.widget_enabled !== false);
+                
+                if (data.logo_url) {
+                    setCompanyLogo(data.logo_url);
+                }
+                
+                if (data.greetings && data.greetings[language]) {
+                    setMessages([{ id: 1, text: data.greetings[language], sender: 'bot' }]);
+                } else {
+                    setMessages([{ id: 1, text: t.notConfigured, sender: 'bot', isError: true }]);
+                }
+            })
+            .catch(() => {
+                setWidgetEnabled(false);
+                setMessages([{ id: 1, text: t.notConfigured, sender: 'bot', isError: true }]);
+            });
+    }, [language]);
 
     const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     useEffect(() => { scrollToBottom(); }, [messages, isOpen]);
 
     const handleSend = async () => {
-        if (!inputText.trim()) return;
+        if (!inputText.trim() || !companyId) return;
         if (!widgetEnabled) {
             setMessages(prev => [...prev, { id: Date.now(), text: 'Виджет временно отключен / Widget temporarily disabled', sender: 'bot', isError: true }]);
             return;
@@ -95,7 +145,7 @@ export function App() {
         setMessages(prev => [...prev, { id: Date.now(), text: userMsg, sender: 'user' }]);
         setIsTyping(true);
         try {
-            const response = await fetch('/sales/1/chat', {
+            const response = await fetch(`/sales/${companyId}/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ message: userMsg, session_id: "web-session", user_id: visitorId, language: language })
@@ -111,12 +161,10 @@ export function App() {
 
     const handleKeyPress = (e) => { if (e.key === 'Enter') handleSend(); };
 
-    // Start recording
     const startRecording = async () => {
         if (isRecordingRef.current) return;
         isRecordingRef.current = true;
         setIsRecording(true);
-
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             streamRef.current = stream;
@@ -139,7 +187,6 @@ export function App() {
         }
     };
 
-    // Stop recording
     const stopRecording = () => {
         if (!isRecordingRef.current) return;
         isRecordingRef.current = false;
@@ -149,7 +196,6 @@ export function App() {
         }
     };
 
-    // Use Pointer Events for cross-platform support
     const handlePointerDown = (e) => {
         e.preventDefault();
         e.target.setPointerCapture(e.pointerId);
@@ -162,6 +208,7 @@ export function App() {
     };
 
     const sendVoice = async (audioBlob) => {
+        if (!companyId) return;
         setMessages(prev => [...prev, { id: Date.now(), text: t.thinking, sender: 'user' }]);
         setIsTyping(true);
         const formData = new FormData();
@@ -170,7 +217,7 @@ export function App() {
         formData.append('user_id', visitorId);
         formData.append('language', language);
         try {
-            const response = await fetch('/sales/1/voice', { method: 'POST', body: formData });
+            const response = await fetch(`/sales/${companyId}/voice`, { method: 'POST', body: formData });
             const data = await response.json();
             if (data.text) {
                 setMessages(prev => {
@@ -186,12 +233,20 @@ export function App() {
         } finally { setIsTyping(false); }
     };
 
-    // Reset - create NEW visitor ID = new lead
     const resetChat = () => {
         const newId = `v_${Math.random().toString(36).substr(2, 9)}`;
         setVisitorId(newId);
         localStorage.setItem('bizdnaii_vid', newId);
-        setMessages([{ id: 1, text: t.intro, sender: 'bot' }]);
+        fetch('/sales/widget/config')
+            .then(r => r.json())
+            .then(data => {
+                if (data.greetings && data.greetings[language]) {
+                    setMessages([{ id: 1, text: data.greetings[language], sender: 'bot' }]);
+                } else {
+                    setMessages([{ id: 1, text: t.notConfigured, sender: 'bot', isError: true }]);
+                }
+            })
+            .catch(() => setMessages([{ id: 1, text: t.notConfigured, sender: 'bot', isError: true }]));
     };
 
     return (
@@ -200,7 +255,7 @@ export function App() {
                 <div className="mb-4 w-80 h-[500px] bg-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-700" style={{ marginRight: '-30px' }}>
                     <div className="bg-indigo-600 p-4 flex justify-between items-center">
                         <div className="flex items-center gap-2">
-                            <img src="https://bizdnai.com/logo.png" className="w-8 h-8 rounded-full" alt="" />
+                            <img src={companyLogo} className="w-8 h-8 rounded-full" alt="" />
                             <div>
                                 <h3 className="font-bold text-sm text-white">BizDNAi</h3>
                                 <span className="text-xs text-green-300 flex items-center gap-1">● {t.online}</span>
@@ -236,7 +291,6 @@ export function App() {
                             <button onClick={handleSend} className="p-2.5 bg-indigo-600 rounded-full hover:bg-indigo-700 shrink-0">
                                 <Send size={22} className="text-white" />
                             </button>
-                            {/* Hold to record - Pointer Events */}
                             <button
                                 onPointerDown={handlePointerDown}
                                 onPointerUp={handlePointerUp}
@@ -259,7 +313,7 @@ export function App() {
                 <button onClick={() => setIsOpen(!isOpen)} className="w-16 h-16 rounded-full bg-indigo-600 flex items-center justify-center shadow-2xl relative">
                     {!isOpen && <span className="absolute inset-0 rounded-full bg-indigo-600 opacity-75" style={{ animation: 'ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite' }}></span>}
                     <div className="relative z-10">
-                        {isOpen ? <X size={28} className="text-white" /> : <img src="https://bizdnai.com/logo.png" className="w-8 h-8 rounded-full" alt="Chat" />}
+                        {isOpen ? <X size={28} className="text-white" /> : <img src={companyLogo} className="w-8 h-8 rounded-full" alt="Chat" />}
                     </div>
                 </button>
             </div>

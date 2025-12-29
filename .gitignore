@@ -8,3 +8,20 @@ node_modules/
 dist/
 *.backup.*
 .DS_Store
+
+# Temporary fix scripts
+add_*.py
+fix_*.py
+check_*.py
+show_*.py
+update_*.py
+remove_*.py
+simplify_*.py
+refactor_*.py
+improve_*.py
+reactivate_*.py
+deploy_*.py
+*.backup
+analyze_*.py
+restore_*.py
+sync_*.sh
