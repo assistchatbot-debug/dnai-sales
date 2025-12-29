@@ -9,23 +9,26 @@ from concurrent.futures import ThreadPoolExecutor
 
 class EmailService:
     def __init__(self):
-        self.smtp_host = os.getenv('SMTP_HOST', 'smtp.mail.ru')
+        self.smtp_host = os.getenv('SMTP_HOST', 'smtp.gmail.com')
         self.smtp_port = int(os.getenv('SMTP_PORT', 465))
         self.smtp_user = os.getenv('SMTP_USER')
         self.smtp_password = os.getenv('SMTP_PASSWORD')
-        self.manager_email = os.getenv('MANAGER_EMAIL')
         self.executor = ThreadPoolExecutor(max_workers=3)
         
     def _send_email_sync(self, lead_contact: str, conversation_history: List[Dict[str, str]], ai_summary: str, lead_phone: str = None, to_email: str = None):
         """
         Synchronous email sending function (runs in thread pool)
         """
-        if not all([self.smtp_user, self.smtp_password, self.manager_email]):
-            logging.warning('⚠️ Email credentials not configured')
+        if not all([self.smtp_user, self.smtp_password]):
+            logging.warning('⚠️ SMTP credentials not configured')
+            return False
+        
+        if not to_email:
+            logging.error('❌ No recipient email provided (to_email is None)')
             return False
 
         try:
-            logging.info(f'📧 Sending email notification to {to_email or self.manager_email}...')
+            logging.info(f'📧 Sending email notification to {to_email}...')
             
             # Format conversation history
             conversation_text = '\n\n'.join([
@@ -37,7 +40,7 @@ class EmailService:
             msg = MIMEMultipart('alternative')
             msg['Subject'] = f'🎯 Новый лид: {lead_contact} - {lead_phone or "телефон не указан"}'  
             msg['From'] = self.smtp_user
-            msg['To'] = to_email or self.manager_email  # Use company email if provided
+            msg['To'] = to_email
 
             # Plain text version
             text_content = f'''Новый лид от BizDNAi
