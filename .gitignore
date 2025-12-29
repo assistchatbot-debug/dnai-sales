@@ -25,3 +25,4 @@ deploy_*.py
 analyze_*.py
 restore_*.py
 sync_*.sh
+backup_*/
