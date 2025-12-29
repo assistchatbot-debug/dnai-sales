@@ -19,7 +19,7 @@ async def analyze_lead_temperature(history: list) -> str:
                     "Content-Type": "application/json"
                 },
                 json={
-                    "model": "anthropic/claude-3-haiku:beta",
+                    "model": "openai/gpt-oss-120b:exacto",
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": 20
                 }
@@ -55,6 +55,49 @@ from slowapi.util import get_remote_address
 
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix='/sales', tags=['sales_agent'])
+
+async def translate_greeting(text: str, target_lang: str) -> str:
+    """Translate greeting using OpenRouter AI (Claude 3 Haiku)"""
+    lang_map = {
+        'en': 'English',
+        'kz': 'Kazakh (Қазақша)',
+        'ky': 'Kyrgyz (Кыргызча)',
+        'uz': 'Uzbek (O\'zbekcha)',
+        'uk': 'Ukrainian (Українська)'
+    }
+    
+    if target_lang not in lang_map:
+        logging.warning(f'Unknown target language: {target_lang}')
+        return text
+    
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {os.getenv('OPENROUTER_API_KEY')}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "openai/gpt-oss-120b:exacto",
+                    "messages": [{
+                        "role": "user",
+                        "content": f"Translate this text to {lang_map[target_lang]}. Keep the same tone, style and formatting (line breaks). Return ONLY the translation with nothing else:\\n\\n{text}"
+                    }],
+                    "max_tokens": 500
+                }
+            )
+            if resp.status_code == 200:
+                translated = resp.json()["choices"][0]["message"]["content"].strip()
+                logging.info(f'✅ Translated to {target_lang}: {translated[:50]}...')
+                return translated
+            else:
+                logging.error(f'Translation API error: {resp.status_code}')
+    except Exception as e:
+        logging.error(f'Translation error [{target_lang}]: {e}')
+    
+    return text  # Fallback to original on error
+
 
 class SalesConfigUpdate(BaseModel):
     ai_prompt: Optional[str] = None
@@ -762,7 +805,7 @@ async def get_widget_config(request: Request, db: AsyncSession = Depends(get_db)
             raise HTTPException(status_code=400, detail='Invalid referer')
         
         result = await db.execute(
-            select(WebWidget).where(WebWidget.domain == domain).where(WebWidget.is_active == True)
+            select(WebWidget).where(WebWidget.domain == domain)
         )
         widget = result.scalars().first()
         
@@ -779,6 +822,7 @@ async def get_widget_config(request: Request, db: AsyncSession = Depends(get_db)
             'company_id': company.id,
             'company_name': company.name,
             'logo_url': company.logo_url or 'https://bizdnai.com/logo.png',
+            'is_active': widget.is_active,
             'greetings': {
                 'ru': widget.greeting_ru,
                 'en': widget.greeting_en,
@@ -786,8 +830,7 @@ async def get_widget_config(request: Request, db: AsyncSession = Depends(get_db)
                 'ky': widget.greeting_ky,
                 'uz': widget.greeting_uz,
                 'uk': widget.greeting_uk
-            },
-            'widget_enabled': widget.is_active
+            }
         }
         
     except HTTPException:
@@ -839,6 +882,14 @@ async def create_web_widget(company_id: int, request: Request, db: AsyncSession 
             greeting_ru=greeting_ru,  # Using channel_name as domain
             is_active=True
         )
+        
+        # Auto-translate greeting to other languages
+        widget.greeting_en = await translate_greeting(greeting_ru, 'en')
+        widget.greeting_kz = await translate_greeting(greeting_ru, 'kz')
+        widget.greeting_ky = await translate_greeting(greeting_ru, 'ky')
+        widget.greeting_uz = await translate_greeting(greeting_ru, 'uz')
+        widget.greeting_uk = await translate_greeting(greeting_ru, 'uk')
+        logging.info(f'✅ Auto-translated greeting for widget')
         
         db.add(widget)
         await db.commit()
@@ -898,6 +949,12 @@ async def update_web_widget(company_id: int, widget_id: int, request: Request, d
         # Update greeting if provided
         if greeting_ru:
             widget.greeting_ru = greeting_ru
+            # Auto-translate to other languages
+            widget.greeting_en = await translate_greeting(greeting_ru, 'en')
+            widget.greeting_kz = await translate_greeting(greeting_ru, 'kz')
+            widget.greeting_ky = await translate_greeting(greeting_ru, 'ky')
+            widget.greeting_uz = await translate_greeting(greeting_ru, 'uz')
+            widget.greeting_uk = await translate_greeting(greeting_ru, 'uk')
         
         # Update domain if provided
         if domain:
@@ -1055,6 +1112,14 @@ async def create_widget(company_id:int,data:dict,db:AsyncSession=Depends(get_db)
     if not ch:raise HTTPException(400,"channel_name required")
     # Allow multiple widgets per channel - no uniqueness check
     w=SocialWidget(company_id=company_id,channel_name=ch,greeting_message=data.get("greeting_message","Здравствуйте!"),is_active=True)
+    # Auto-translate greeting
+    base_greeting = data.get("greeting_message","Здравствуйте!")
+    w.greeting_ru = base_greeting
+    w.greeting_en = await translate_greeting(base_greeting, 'en')
+    w.greeting_kz = await translate_greeting(base_greeting, 'kz')
+    w.greeting_ky = await translate_greeting(base_greeting, 'ky')
+    w.greeting_uz = await translate_greeting(base_greeting, 'uz')
+    w.greeting_uk = await translate_greeting(base_greeting, 'uk')
     db.add(w)
     await db.commit()
     await db.refresh(w)
