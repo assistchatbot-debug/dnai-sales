@@ -138,7 +138,7 @@ async def configure_sales_agent(request: Request, company_id: int, config: Sales
     await db.commit()
     return {'status': 'updated'}
 
-async def get_or_create_lead(db: AsyncSession, company_id: int, user_id: str, username: str = None, new_session: bool = False):
+async def get_or_create_lead(db: AsyncSession, company_id: int, user_id: str, username: str = None, new_session: bool = False, source: str = None):
     uid_val = int(user_id) if user_id and user_id.isdigit() else None
     logging.info(f'🔧 get_or_create_lead: user_id={user_id}, uid_val={uid_val}, new_session={new_session}')
     lead = None
@@ -174,7 +174,7 @@ async def get_or_create_lead(db: AsyncSession, company_id: int, user_id: str, us
 
     if not lead:
         contact_info = {'username': username, 'visitor_id': user_id} if user_id else {'username': username}
-        source = 'telegram' if uid_val else 'web'
+        source = source or ('telegram' if uid_val else 'web')
         lead = Lead(company_id=company_id, telegram_user_id=uid_val, contact_info=contact_info, status='new', source=source)
         db.add(lead)
         await db.commit()
