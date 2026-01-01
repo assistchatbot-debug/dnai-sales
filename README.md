@@ -20,6 +20,7 @@
 ┌─────────────────┐ ┌─────────────────┐ │ Telegram Bot │ │ Web Widget │ │ (@DNAiSoft) │ │ (bizdnai.com) │ └────────┬────────┘ └────────┬────────┘ │ │ │ ┌─────────────────┴────────┐ │ │ │ └────────►│ FastAPI Backend │ │ (Port 8000) │ └──────────┬───────────────┘ │ ┌────────────────────┼────────────────────┐ │ │ │ ▼ ▼ ▼ ┌─────────┐ ┌─────────────┐ ┌──────────┐ │ OpenAI │ │ PostgreSQL │ │ Email │ │ Whisper │ │ Database │ │ SMTP │ │ (STT) │ │ (AsyncPG) │ │ Service │ └─────────┘ └─────────────┘ └──────────┘ │ │ ▼ ▼ ┌─────────────┐ ┌──────────────┐ │ OpenRouter │ │ Telegram │ │ GPT │ │ API │ └─────────────┘ └──────────────┘
 
 <img width="410" height="544" alt="image" src="https://github.com/user-attachments/assets/eb36a4a5-51dd-4229-afdd-8c58ad10d93d" />
+
 ## 📦 Tech Stack
 ### Backend
 - **FastAPI** - Modern async web framework
@@ -27,22 +28,29 @@
 - **AsyncPG** - High-performance PostgreSQL driver
 - **Pydantic** - Data validation
 - **SlowAPI** - Rate limiting
+
 ### Bot
 - **Aiogram 3.x** - Async Telegram Bot framework
 - **OpenAI API** - Whisper for voice transcription
 - **OpenRouter** - GPT model access
+
 ### Database
 - **PostgreSQL 15** - Primary database
 - **DigitalOcean Managed DB** - Production hosting
+
 ### AI Services
 - **OpenRouter GPT** - Conversational AI
 - **OpenAI Whisper** - Speech-to-text
+
 ### DevOps
 - **Docker & Docker Compose** - Containerization
 - **Nginx** - Reverse proxy (optional)
+
 ## 🗄️ Database Schema
+
 ### Core Tables
 **companies** - Main company configuration
+
 ```sql
 id, name, subdomain, settings, default_language, created_at,
 tier (VARCHAR), tier_expiry (TIMESTAMP), ai_package (VARCHAR),
@@ -75,21 +83,33 @@ ai_agent_packages - AI setup packages (NEW)
 sql
 package (VARCHAR PRIMARY KEY), name_ru, price_usd, 
 features_ru (TEXT[]), is_active, updated_at
+
 💳 Tier Pricing System (NEW)
 Subscription Tiers (Monthly)
 Tier	Price	Leads/month	Web Widgets	Social Widgets
+
 🆓 FREE	$0	20	1	0
+
 💼 BASIC	$19	100	1	2
+
 🚀 PRO	$39	200	1	5
+
 🏢 ENTERPRISE	$99	1000	3	10
 AI Agent Packages (One-time payment)
 Package	Price	Features
+
 🎯 Basic	$0	Standard greeting, basic qualification, contact collection
+
 📊 Standard	$99	Personalization, extended qualification, FAQ training
+
 ⚡ Advanced	$199	Knowledge base, smart qualification, dialog scripts
+
 🎨 Custom	$399	Full customization, CRM integration, 24/7 support
+
 Pricing API Endpoints (NEW)
+
 Method	Endpoint	Description
+
 GET	/sales/tiers	List all subscription tiers
 GET	/sales/ai-packages	List AI agent packages
 GET	/sales/pricing.html	Dynamic pricing page (RU/EN language toggle)
@@ -97,6 +117,7 @@ GET	/sales/{id}/tier-usage	Company's tier and usage statistics
 POST	/sales/{id}/send-pricing-email	Send pricing info to company email
 PATCH	/sales/tiers/{tier}	Update tier settings (SuperAdmin only)
 PATCH	/sales/ai-packages/{pkg}	Update AI package (SuperAdmin only)
+
 🔧 Environment Variables
 Create a .env file with the following variables:
 
@@ -105,30 +126,40 @@ bash
 BOT_TOKEN=your_telegram_bot_token
 MANAGER_CHAT_ID=123456789               # Manager ID for reports
 SUPER_ADMIN_CHAT_ID=987654321           # SuperAdmin ID for managing all companies
+
 # API Keys
 OPENROUTER_API_KEY=your_openrouter_key
 OPENAI_API_KEY=your_openai_key          # For voice transcription
+
 # Database
 DATABASE_URL=postgresql+asyncpg://user:pass@db:5432/dbname
+
 # Email (optional)
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=465
 SMTP_USER=user@example.com
 SMTP_PASSWORD=password
 EMAIL_TO=manager@example.com
+
 🚀 Quick Start
 bash
+
 # 1. Clone
 git clone [https://github.com/assistchatbot-debug/dnai-sales.git](https://github.com/assistchatbot-debug/dnai-sales.git)
 cd dnai-sales
+
 # 2. Configure
 cp .env.example .env
+
 # Edit .env with your credentials
+
 # 3. Deploy
 docker-compose up -d --build
+
 # 4. Check logs
 docker-compose logs -f bot backend
 Architecture Details
+
 ┌─────────────────────────────────────────────────────────────────┐
 │                        NGINX (порт 80/443)                      │
 │                         bizdnai.com                             │
@@ -166,6 +197,7 @@ Architecture Details
 │               │     port 5432       │                           │
 │               └─────────────────────┘                           │
 └─────────────────────────────────────────────────────────────────┘
+
 Ports
 Port	Service	Description
 80/443	NGINX	External proxy, SSL termination
