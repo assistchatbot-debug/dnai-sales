@@ -1,81 +1,51 @@
 # 🤖 BizDNAi Sales Agent
-
 **Intelligent AI-powered sales assistant for Telegram with voice recognition and multi-language support.**
-
 [![Python](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104-green.svg)](https://fastapi.tiangolo.com/)
 [![Aiogram](https://img.shields.io/badge/Aiogram-3.x-blue.svg)](https://docs.aiogram.dev/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-blue.svg)](https://www.postgresql.org/)
-
 ## 🚀 Features
-
 - ✅ **AI-Powered Conversations** - GPT-based product recommendations
 - 🎤 **Voice Recognition** - OpenAI Whisper for speech-to-text
 - 🌍 **Multi-Language Support** - Russian, English, Kazakh, Kyrgyz, Uzbek, Ukrainian
 - 📊 **Lead Management** - Automatic lead tracking and interaction logging
 - 🔄 **Async Architecture** - High-performance async/await with SQLAlchemy
 - 🐳 **Docker Deployment** - One-command deployment with Docker Compose
-
+- 💳 **Tier Pricing System** - 4 subscription tiers (Free, Basic, Pro, Enterprise) + 4 AI agent packages
+- 📧 **Email Notifications** - Automated pricing emails and lead reports via SMTP
+- 🎯 **A/B Testing** - Multiple widgets per channel with unique IDs for analytics
+- 🏢 **Multi-Tenancy** - Support for multiple companies with separate bots and managers
 ## 🏗️ Architecture
-┌─────────────────┐         ┌─────────────────┐
-│  Telegram Bot   │         │   Web Widget    │
-│   (@DNAiSoft)   │         │  (bizdnai.com)  │
-└────────┬────────┘         └────────┬────────┘
-         │                           │
-         │         ┌─────────────────┴────────┐
-         │         │                          │
-         └────────►│     FastAPI Backend      │
-                   │      (Port 8000)         │
-                   └──────────┬───────────────┘
-                              │
-         ┌────────────────────┼────────────────────┐
-         │                    │                    │
-         ▼                    ▼                    ▼
-   ┌─────────┐        ┌─────────────┐      ┌──────────┐
-   │ OpenAI  │        │ PostgreSQL  │      │  Email   │
-   │ Whisper │        │  Database   │      │  SMTP    │
-   │  (STT)  │        │  (AsyncPG)  │      │ Service  │
-   └─────────┘        └─────────────┘      └──────────┘
-         │                                        │
-         ▼                                        ▼
-   ┌─────────────┐                     ┌──────────────┐
-   │ OpenRouter  │                     │  Telegram    │
-   │    GPT      │                     │     API      │
-   └─────────────┘                     └──────────────┘
+┌─────────────────┐ ┌─────────────────┐ │ Telegram Bot │ │ Web Widget │ │ (@DNAiSoft) │ │ (bizdnai.com) │ └────────┬────────┘ └────────┬────────┘ │ │ │ ┌─────────────────┴────────┐ │ │ │ └────────►│ FastAPI Backend │ │ (Port 8000) │ └──────────┬───────────────┘ │ ┌────────────────────┼────────────────────┐ │ │ │ ▼ ▼ ▼ ┌─────────┐ ┌─────────────┐ ┌──────────┐ │ OpenAI │ │ PostgreSQL │ │ Email │ │ Whisper │ │ Database │ │ SMTP │ │ (STT) │ │ (AsyncPG) │ │ Service │ └─────────┘ └─────────────┘ └──────────┘ │ │ ▼ ▼ ┌─────────────┐ ┌──────────────┐ │ OpenRouter │ │ Telegram │ │ GPT │ │ API │ └─────────────┘ └──────────────┘
 
 <img width="410" height="544" alt="image" src="https://github.com/user-attachments/assets/eb36a4a5-51dd-4229-afdd-8c58ad10d93d" />
-
 ## 📦 Tech Stack
-
 ### Backend
 - **FastAPI** - Modern async web framework
 - **SQLAlchemy 2.0** - Async ORM with PostgreSQL
 - **AsyncPG** - High-performance PostgreSQL driver
 - **Pydantic** - Data validation
 - **SlowAPI** - Rate limiting
-
 ### Bot
 - **Aiogram 3.x** - Async Telegram Bot framework
 - **OpenAI API** - Whisper for voice transcription
 - **OpenRouter** - GPT model access
-
 ### Database
 - **PostgreSQL 15** - Primary database
 - **DigitalOcean Managed DB** - Production hosting
-
 ### AI Services
 - **OpenRouter GPT** - Conversational AI
 - **OpenAI Whisper** - Speech-to-text
-
 ### DevOps
 - **Docker & Docker Compose** - Containerization
 - **Nginx** - Reverse proxy (optional)
-
 ## 🗄️ Database Schema
-
 ### Core Tables
-
-id, name, subdomain, settings, default_language, created_at
+**companies** - Main company configuration
+```sql
+id, name, subdomain, settings, default_language, created_at,
+tier (VARCHAR), tier_expiry (TIMESTAMP), ai_package (VARCHAR),
+leads_used_this_month (INTEGER), leads_reset_date (TIMESTAMP)
 leads - Customer leads with Telegram integration
 
 sql
@@ -93,16 +63,71 @@ ui_texts - Multi-language UI translations
 
 sql
 id, company_id, key, language_code, text, created_at
+tier_settings - Subscription tier configuration (NEW)
+
+sql
+tier (VARCHAR PRIMARY KEY), name_ru, price_usd, leads_limit,
+web_widgets_limit, social_widgets_limit, features_ru (TEXT[]),
+is_active, updated_at
+ai_agent_packages - AI setup packages (NEW)
+
+sql
+package (VARCHAR PRIMARY KEY), name_ru, price_usd, 
+features_ru (TEXT[]), is_active, updated_at
+💳 Tier Pricing System (NEW)
+Subscription Tiers (Monthly)
+Tier	Price	Leads/month	Web Widgets	Social Widgets
+🆓 FREE	$0	20	1	0
+💼 BASIC	$19	100	1	2
+🚀 PRO	$39	200	1	5
+🏢 ENTERPRISE	$99	1000	3	10
+AI Agent Packages (One-time payment)
+Package	Price	Features
+🎯 Basic	$0	Standard greeting, basic qualification, contact collection
+📊 Standard	$99	Personalization, extended qualification, FAQ training
+⚡ Advanced	$199	Knowledge base, smart qualification, dialog scripts
+🎨 Custom	$399	Full customization, CRM integration, 24/7 support
+Pricing API Endpoints (NEW)
+Method	Endpoint	Description
+GET	/sales/tiers	List all subscription tiers
+GET	/sales/ai-packages	List AI agent packages
+GET	/sales/pricing.html	Dynamic pricing page (RU/EN language toggle)
+GET	/sales/{id}/tier-usage	Company's tier and usage statistics
+POST	/sales/{id}/send-pricing-email	Send pricing info to company email
+PATCH	/sales/tiers/{tier}	Update tier settings (SuperAdmin only)
+PATCH	/sales/ai-packages/{pkg}	Update AI package (SuperAdmin only)
 🔧 Environment Variables
-Create a 
-.env
- file with the following variables:
+Create a .env file with the following variables:
 
-# BizDNAi Sales Agent - Настройка и Документация
-
-## Архитектура системы
-
-```
+bash
+# Telegram
+BOT_TOKEN=your_telegram_bot_token
+MANAGER_CHAT_ID=123456789               # Manager ID for reports
+SUPER_ADMIN_CHAT_ID=987654321           # SuperAdmin ID for managing all companies
+# API Keys
+OPENROUTER_API_KEY=your_openrouter_key
+OPENAI_API_KEY=your_openai_key          # For voice transcription
+# Database
+DATABASE_URL=postgresql+asyncpg://user:pass@db:5432/dbname
+# Email (optional)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_USER=user@example.com
+SMTP_PASSWORD=password
+EMAIL_TO=manager@example.com
+🚀 Quick Start
+bash
+# 1. Clone
+git clone [https://github.com/assistchatbot-debug/dnai-sales.git](https://github.com/assistchatbot-debug/dnai-sales.git)
+cd dnai-sales
+# 2. Configure
+cp .env.example .env
+# Edit .env with your credentials
+# 3. Deploy
+docker-compose up -d --build
+# 4. Check logs
+docker-compose logs -f bot backend
+Architecture Details
 ┌─────────────────────────────────────────────────────────────────┐
 │                        NGINX (порт 80/443)                      │
 │                         bizdnai.com                             │
@@ -130,6 +155,8 @@ Create a
 │    │  - POST /sales/{company_id}/widget-enabled       │         │
 │    │  - GET  /sales/health/db                         │         │
 │    │  - GET  /sales/companies/list                    │         │
+│    │  - GET  /sales/tiers                             │         │
+│    │  - GET  /sales/pricing.html                      │         │
 │    └──────────────────────────────────────────────────┘         │
 │                         │                                       │
 │                         ▼                                       │
@@ -138,134 +165,41 @@ Create a
 │               │     port 5432       │                           │
 │               └─────────────────────┘                           │
 └─────────────────────────────────────────────────────────────────┘
-```
+Ports
+Port	Service	Description
+80/443	NGINX	External proxy, SSL termination
+8005	bizdnaii_backend	Main API for widget and bot
+8000	bizdna-new-api-1	Old API (not used for voice)
+5432	PostgreSQL	Database
+User Roles
+MANAGER_CHAT_ID
+Company manager receiving lead notifications.
 
-## Порты
+Commands (text in bot):
 
-| Порт | Сервис | Описание |
-|------|--------|----------|
-| **80/443** | NGINX | Внешний прокси, SSL terminация |
-| **8005** | bizdnaii_backend | Основной API для виджета и бота |
-| **8000** | bizdna-new-api-1 | Старый API (не используется для voice) |
-| **5432** | PostgreSQL | База данных |
+status
+ - Check systems (API, DB, AI, widget)
+leads
+ - Last 5 leads with source, date, temperature
+lead count for day/week/month
+widget 1 / widget 0 - Enable/disable widget
+help - Command list
+SUPER_ADMIN_CHAT_ID
+Super administrator for multi-tenancy.
 
-## Переменные окружения (.env)
+Commands:
 
-```bash
-# Telegram
-BOT_TOKEN=your_telegram_bot_token
-MANAGER_CHAT_ID=123456789               # ID менеджера для отчётов
-SUPER_ADMIN_CHAT_ID=987654321           # SuperAdmin ID для управления всеми компаниями
+bots - List of all connected companies/bots
+All manager commands
+Multi-Tenancy
+The system supports multiple companies (Company ID). Each company has:
 
-# API Keys
-OPENROUTER_API_KEY=your_openrouter_key
-OPENAI_API_KEY=your_openai_key          # Для транскрипции голоса
+Own widget
+Own Telegram bot
+Own leads and settings
+SuperAdmin (SUPER_ADMIN_CHAT_ID) can view and manage all companies.
 
-# Database
-DATABASE_URL=postgresql+asyncpg://user:pass@db:5432/dbname
-
-# Email (optional)
-SMTP_SERVER=smtp.example.com
-SMTP_PORT=465
-SMTP_USER=user@example.com
-SMTP_PASSWORD=password
-EMAIL_TO=manager@example.com
-```
-
-## Роли пользователей
-
-### MANAGER_CHAT_ID
-Менеджер компании, получает уведомления о лидах.
-
-**Команды (текстом в боте):**
-- `статус` — проверка систем (API, БД, AI, виджет)
-- `лиды` — последние 5 лидов с источником, датой, температурой
-- `количество лидов за день/неделю/месяц`
-- `виджет 1` / `виджет 0` — включить/выключить виджет
-- `помощь` — список команд
-
-### SUPER_ADMIN_CHAT_ID
-Супер-администратор для мультитенантности.
-
-**Команды:**
-- `боты` — список всех подключенных компаний/ботов
-- Все команды менеджера
-
-## Мультитенантность (MultiTenancy)
-
-Система поддерживает несколько компаний (Company ID). Каждая компания имеет:
-- Собственный виджет (widget)
-- Своего Telegram бота
-- Свои лиды и настройки
-
-SuperAdmin (`SUPER_ADMIN_CHAT_ID`) может просматривать и управлять всеми компаниями.
-
-## Docker Compose
-
-```yaml
-services:
-  backend:
-    container_name: bizdnaii_backend
-    ports:
-      - "8005:8000"
-    environment:
-      - DATABASE_URL
-      - OPENROUTER_API_KEY
-    
-  bot:
-    container_name: bizdnaii_bot
-    environment:
-      - BOT_TOKEN
-      - API_BASE_URL=http://backend:8000
-      - MANAGER_CHAT_ID
-      - SUPER_ADMIN_CHAT_ID
-    
-  db:
-    image: postgres:15
-    ports:
-      - "5432:5432"
-```
-
-## API Endpoints
-
-### POST /sales/{company_id}/chat
-Основной endpoint для общения с AI агентом.
-
-```json
-{
-  "message": "Привет",
-  "user_id": "123456789",
-  "username": "user_123",
-  "source": "telegram"  // или "web"
-}
-```
-
-### GET /sales/{company_id}/leads
-Получение лидов с расширенной информацией.
-
-```json
-{
-  "leads": [
-    {
-      "id": 357,
-      "telegram_user_id": 123456789,
-      "contact_info": {"name": "Иван", "phone": "7771234567"},
-      "status": "confirmed",
-      "source": "telegram",
-      "temperature": "🔥 ГОРЯЧИЙ",
-      "created_at": "2025-12-13 15:30"
-    }
-  ]
-}
-```
-
-### POST /sales/{company_id}/widget-enabled
-Включить/выключить виджет для компании.
-
-```
-POST /sales/1/widget-enabled?enabled=false
-```
-Multilingual Lead Detection Logic (6 Languages)
+📱 Multilingual Lead Detection Logic (6 Languages)
 Overview
 BizDNAi widget now supports intelligent lead detection across 6 languages: Russian, English, Kazakh, Kyrgyz, Uzbek, and Ukrainian. The system uses AI-powered analysis to extract contact information and detect user confirmation in any language.
 
@@ -297,12 +231,9 @@ Capitalized automatically
 Storage: Saved to lead.contact_info['name']
 Example:
 
-User: "Меня зовут Сакен"
-AI extracts: "Сакен" ✅
-User: "My name is John"
-AI extracts: "John" ✅
-User: "Атым Айдар"
-AI extracts: "Айдар" ✅
+User: "Меня зовут Сакен" → AI extracts: "Сакен" ✅
+User: "My name is John" → AI extracts: "John" ✅
+User: "Атым Айдар" → AI extracts: "Айдар" ✅
 Languages supported: All 6 (AI understands context in any language)
 
 2️⃣ Phone Number Detection
@@ -316,6 +247,7 @@ extract_phone_number(text)
 
 Regex Pattern:
 
+python
 r'\+?\d[\d\s\-\(\)]{7,}'
 Detects:
 
@@ -329,7 +261,6 @@ Storage:
 First detected phone saved to lead.contact_info['phone']
 Won't overwrite existing phone number
 Language-agnostic: Works regardless of conversation language
-
 3️⃣ Confirmation Detection (NEW - 25.12.2024)
 Method: AI-Powered Sentiment Analysis
 Location: 
@@ -337,8 +268,10 @@ backend/routers/sales_agent.py
  (lines 338-358)
 
 ⚠️ Previous Problem
+
 Old logic used hardcoded keyword matching:
 
+python
 # ❌ OLD - Only worked for specific words
 confirm_words = ['да', 'yes', 'ок']
 is_confirmed = any(w in message for w in confirm_words)
@@ -349,20 +282,20 @@ Issues:
 ❌ Failed on "To'g'ri" (Uzbek)
 ❌ Couldn't handle variations like "конечно", "exactly", "ага"
 ✅ New Solution: AI Confirmation Detection
+
 How it works:
 
 AI Prompt (in Russian, but analyzes ANY language):
-
+python
 f"""Пользователь ответил: "{user_message}"
 Это положительное подтверждение (да, согласен, верно, ok и т.д.) или отрицание?
 Ответь ОДНИМ словом: ДА или НЕТ"""
 AI Response: "ДА" or "НЕТ"
-
 Detection:
-
+python
 is_confirmed = 'да' in ai_response.lower() or 'yes' in ai_response.lower()
 Fallback: If AI fails, uses simple keywords:
-
+python
 simple_confirms = ['да', 'yes', 'ок', 'ok', '+', '👍']
 Examples that NOW work:
 
@@ -392,6 +325,7 @@ Checks if bot asked for confirmation in last 3 messages:
 
 Method 1: Multilingual Keywords
 
+python
 confirm_keywords = [
     'верно', 'правильно', 'подтвердите',  # Russian
     'correct', 'confirm',                  # English
@@ -402,10 +336,12 @@ confirm_keywords = [
 ]
 Method 2: Phone Pattern Detection
 
+python
 # If bot message contains phone number = confirmation message
 has_phone_pattern = bool(re.search(r'\+?\d[\d\s()-]{7,}', bot_text))
 Logic:
 
+python
 if (has_keyword OR has_phone_pattern):
     has_confirm_q = True
 Examples of detected bot messages:
@@ -415,6 +351,8 @@ Examples of detected bot messages:
 ✅ "Сіздің атыңыз: Айдар\nТелефон: 77012345678\nДұрыс па?" (Kazakh)
 5️⃣ Complete Notification Flow
 Trigger Conditions (ALL must be TRUE):
+
+python
 if (saved_phone AND is_confirmed AND has_confirm_q AND lead.status != 'confirmed'):
     # Send notification to manager
 Breakdown:
@@ -429,27 +367,19 @@ Lead marked as confirmed
 Telegram notification sent to manager
 Email notification sent (if configured)
 📊 Performance & Accuracy
-Name Extraction
-Accuracy: ~95% (depends on AI model)
-Speed: ~200-500ms per extraction
-Languages: All 6 supported equally
-Phone Detection
-Accuracy: ~99% (regex-based)
-Speed: <1ms
-Format: Universal (international formats)
-Confirmation Detection
-Accuracy: ~98% (AI-powered)
-Speed: ~200-400ms per check
-Languages: All 6 + variations
+Feature	Accuracy	Speed	Notes
+Name Extraction	~95%	200-500ms	Depends on AI model
+Phone Detection	~99%	<1ms	Regex-based
+Confirmation Detection	~98%	200-400ms	AI-powered
 🔧 Configuration
 AI Service
-File: 
-backend/services/ai_service.py
+File: backend/services/ai_service.py
 
 Uses OpenRouter API with:
 
 model: "anthropic/claude-3-haiku:beta"
 Fallback Behavior
+
 If AI service fails:
 
 Name extraction: Skip (won't block conversation)
@@ -482,6 +412,7 @@ Backend Processing:
 🤖 AI confirmation check: "Дұрыс" → ДА → True
 ✅ All conditions met → Notification sent!
 🎉 Result
+
 Manager receives Telegram notification:
 
 🔥 НОВЫЙ ЛИД!
@@ -491,133 +422,114 @@ Manager receives Telegram notification:
 🌡 Температура: 🔥 горячий
 📝 Диалог: [...]
 Works for ALL 6 languages without code changes!
----
 
-## 🔐 SuperAdmin Bot (EN)
+🔐 SuperAdmin Bot (EN)
+@BizDNAi_SuperAdmin_bot - centralized company management and multitenancy.
 
-**@BizDNAi_SuperAdmin_bot** - centralized company management and multitenancy.
-
-### Features
-
-#### 🏢 Company Management
-- **Create/Edit** companies through 9-step process:
-  1. Company Name
-  2. TIN/BIN (Tax ID)
-  3. Phone Number
-  4. WhatsApp Number
-  5. Email (for reports)
-  6. Description
-  7. Logo (image upload)
-  8. **Bot Token** (Telegram bot token)
-  9. **Manager Chat ID** (Telegram manager chat ID for notifications)
-
-- **View company list** with indicators:
-  - 🤖 - Bot configured
-  - ❌ - Bot not configured
-
-#### 📈 System Monitoring
-- **Real-time system status**:
-  - Backend: Online/Offline
-  - Database: Online/Offline
-  - Voice Input: Online
-  - **Active Bots**: number of configured bots
-
-### Multitenancy
-
+Features
+🏢 Company Management
+Create/Edit companies through 9-step process:
+Company Name
+TIN/BIN (Tax ID)
+Phone Number
+WhatsApp Number
+Email (for reports)
+Description
+Logo (image upload)
+Bot Token (Telegram bot token)
+Manager Chat ID (Telegram manager chat ID for notifications)
+View company list with indicators:
+🤖 - Bot configured
+❌ - Bot not configured
+📈 System Monitoring
+Real-time system status:
+Backend: Online/Offline
+Database: Online/Offline
+Voice Input: Online
+Active Bots: number of configured bots
+💳 Tier Management (NEW)
+View all tiers and AI packages with current prices and limits
+Edit prices: Click 💰 button → enter new price
+Edit lead limits: Click 👥 button → enter new limit
+Edit AI package prices: Click 🤖 button → enter new price
+Changes apply immediately to pricing page and database
+Multitenancy
 Each company receives:
-- **Own Telegram bot** (via bot_token)
-- **Separate manager** (via manager_chat_id)
-- **Personal email notifications** (via company email)
-- **Isolated lead data**
 
-### Usage
-
-1. **Start**: Send `/start` to @BizDNAi_SuperAdmin_bot
-2. **Create Company**: 
-   - Press "🏢 Companies"
-   - Select "➕ Create company"
-   - Complete 9 steps
-3. **Edit**:
-   - "🏢 Companies" → "✏️ Edit company"
-   - Enter company ID
-   - Update fields (`.` = keep unchanged)
-4. **Check Status**: Press "📈 Status"
-
-### Technical Details
-
-- **Auto-loading**: Main bot loads all active companies from DB on startup
-- **Dynamic Management**: Changes apply after main bot restart
-- **Security**: Access only for authorized SuperAdmin (via SUPER_ADMIN_CHAT_ID)
-- **Fallback**: Uses `.env` values when DB data is missing
----
-
-# BizDNAi Widget
-
-## Overview
+Own Telegram bot (via bot_token)
+Separate manager (via manager_chat_id)
+Personal email notifications (via company email)
+Isolated lead data
+Usage
+Start: Send /start to @BizDNAi_SuperAdmin_bot
+Create Company:
+Press "🏢 Companies"
+Select "➕ Create company"
+Complete 9 steps
+Edit:
+"🏢 Companies" → "✏️ Edit company"
+Enter company ID
+Update fields (. = keep unchanged)
+Check Status: Press "📈 Status"
+Manage Tiers (NEW): Press "💳 Tiers" → use inline buttons to edit
+Technical Details
+Auto-loading: Main bot loads all active companies from DB on startup
+Dynamic Management: Changes apply after main bot restart
+Security: Access only for authorized SuperAdmin (via SUPER_ADMIN_CHAT_ID)
+Fallback: Uses .env values when DB data is missing
+🌐 BizDNAi Widget
+Overview
 Preact-based chat widget with voice support for lead collection.
 
-## Features
-- 💬 Text chat with AI assistant
-- 🎤 Push-to-talk voice recording (hold to record)
-- 🌐 Multilingual support (RU/EN synced with main site)
-- 📱 Mobile responsive design
-- 🔔 Tooltip notification with pulse animation
-- 🔄 Reset button for new lead testing
+Features
+💬 Text chat with AI assistant
+🎤 Push-to-talk voice recording (hold to record)
+🌐 Multilingual support (RU/EN synced with main site)
+📱 Mobile responsive design
+🔔 Tooltip notification with pulse animation
+🔄 Reset button for new lead testing
+Configuration
+Widget Position:
 
-## Configuration
-
-### Widget Position
-```jsx
+jsx
 style={{ right: '40px' }}           // Toggle button position
 style={{ marginRight: '-30px' }}    // Dialog window offset
-```
+API Endpoints:
 
-### API Endpoints
-```
 POST /sales/{company_id}/chat   - Text messages
 POST /sales/{company_id}/voice  - Voice messages
-```
-
-### Language Detection
+Language Detection:
 Widget reads language from:
-1. `localStorage.getItem('bizdnaii_widget_lang')`
-2. Event listener: `bizdnaii-language-change`
 
-### Data Sent to Backend
-**Text chat:**
-```json
+localStorage.getItem('bizdnaii_widget_lang')
+Event listener: bizdnaii-language-change
+Data Sent to Backend:
+
+Text chat:
+
+json
 {
   "message": "user text",
   "session_id": "web-session", 
   "user_id": "v_xxxxx",
   "language": "en"
 }
-```
+Voice:
 
-**Voice:**
-```
 FormData: file, session_id, user_id, language
-```
-
-## Build & Deploy
-```bash
+Build & Deploy
+bash
 # Build widget
 docker-compose build --no-cache widget
-
 # Extract to host
 docker run --rm -v /var/www/bizdnai/widget-source:/out \
   dnai-sales-widget cp /usr/share/nginx/html/bizdnaii-widget.js /out/
-
 # Embed on site
-<script src="https://bizdnai.com/widget-source/bizdnaii-widget.js"></script>
-```
-
-## Version History
-- **v4.0**: Pointer events for push-to-talk, reset creates new lead
-- **v3.x**: Language support, tooltip, pulse animation adjustments
-
-'''
-Widget ID-Based URLs Refactoring - Walkthrough
+<script src="[https://bizdnai.com/widget-source/bizdnaii-widget.js"></script](https://bizdnai.com/widget-source/bizdnaii-widget.js"></script)>
+Version History
+v4.0: Pointer events for push-to-talk, reset creates new lead
+v3.x: Language support, tooltip, pulse animation adjustments
+🎯 Widget ID-Based URLs Refactoring
 Objective
 Refactor widget system from channel_name-based URLs to widget_id-based URLs to enable multiple widgets per channel for A/B testing.
 
@@ -630,10 +542,13 @@ social_widgets
 greeting_ru, greeting_en, greeting_kz, greeting_ky, greeting_uz, greeting_uk
 Existing greeting_message copied to greeting_ru for backward compatibility
 2. Backend API Changes
-New ID-Based Endpoints
+New ID-Based Endpoints:
+
 ✅ GET /companies/{company_id}/widgets/{widget_id:int} - Get widget by ID
 
-# Returns widget data including all translations
+Returns:
+
+json
 {
   "id": 2,
   "company_id": 1,
@@ -648,61 +563,72 @@ New ID-Based Endpoints
 }
 ✅ DELETE /companies/{company_id}/widgets/{widget_id:int} - Delete widget by ID
 
-Widget Creation
+Widget Creation:
+
 ✅ Removed uniqueness constraint on 
 channel_name
-
 Multiple widgets can now have same 
 channel_name
 Each gets unique ID
 URL format: https://bizdnai.com/w/{company_id}/{widget_id}
 3. Frontend Updates
-URL Parsing
-Changed from:
+URL Parsing: Changed from:
 
+javascript
 const channelName = pathParts[3];  // /w/1/instagram
 To:
 
+javascript
 const widgetId = pathParts[3];  // /w/1/2
-API Integration
+API Integration:
+
+javascript
 // Fetch widget data by ID
 const response = await fetch(`/sales/companies/${companyId}/widgets/${widgetId}`);
 // Use channel_name from response for source tracking
 source: widgetData.channel_name || 'web'
-Error Handling
+Error Handling:
+
 404/405 responses show "Виджет не найден"
 Old channel_name URLs blocked
 4. Telegram Bot Updates
-Widget List Display
+Widget List Display:
+
 Социальные сети:
-• Instagram (ID: 2)
-  🔗 https://bizdnai.com/w/1/2
-• Instagram (ID: 3)
-  🔗 https://bizdnai.com/w/1/3
-Delete Operation
+- Instagram (ID: 2)
+  🔗 [https://bizdnai.com/w/1/2](https://bizdnai.com/w/1/2)
+- Instagram (ID: 3)
+  🔗 [https://bizdnai.com/w/1/3](https://bizdnai.com/w/1/3)
+Delete Operation:
+
 Callback data uses widget_id
 API call: DELETE /sales/companies/{company_id}/widgets/{widget_id}
 Testing Results
 ✅ Multiple Widgets Per Channel
+
 Created 3 Instagram widgets:
 
 Widget ID=2: Active, URL /w/1/2
 Widget ID=3: Active, URL /w/1/3
 Widget ID=4: Active, URL /w/1/4
 ✅ Widget Operations
+
 Create: Multiple widgets with same channel_name ✅
 List: Shows all active widgets with IDs and URLs ✅
 Delete: Removes widget by ID, URL becomes inaccessible ✅
 ✅ URL Behavior
+
 New URLs (/w/1/2, /w/1/3) work correctly ✅
 Old URLs (/w/1/instagram) blocked with 405 error ✅
 Deleted widget URLs show "Виджет не найден" ✅
 Migration Impact
-Backward Compatibility
+Backward Compatibility:
+
 Old channel_name endpoint removed
 Existing widgets updated with ID-based URLs in database
 No data loss during migration
-Breaking Changes
+Breaking Changes:
+
 Old URL format /w/{company_id}/{channel_name} no longer works
 All widgets must use ID-based URLs
 Benefits Achieved
@@ -710,57 +636,24 @@ A/B Testing Support: Create unlimited widgets per channel with different greetin
 Unique Identification: Each widget has permanent unique ID
 Scalability: No naming conflicts or uniqueness constraints
 Analytics: Track performance per widget ID, not just channel
-'''
-
-# Telegram Bot
-BOT_TOKEN=your_telegram_bot_token
-
-# API Configuration
-API_BASE_URL=http://backend:8000
-
-# Database (AsyncPG)
-DATABASE_URL=postgresql+asyncpg://user:password@host:port/dbname?ssl=require
-
-# AI Services
-OPENROUTER_API_KEY=sk-or-v1-...
-OPENAI_API_KEY=sk-proj-...
-AI_MODEL=openai/gpt-oss-120b:exacto
-
-# Company
-COMPANY_ID=1
-🚀 Quick Start
-1. Clone Repository
-bash
-git clone [https://github.com/assistchatbot-debug/dnai-sales.git](https://github.com/assistchatbot-debug/dnai-sales.git)
-cd dnai-sales
-2. Configure Environment
-bash
-cp .env.example .env
-# Edit .env with your credentials
-3. Deploy with Docker
-bash
-docker-compose up -d --build
-4. Check Logs
-bash
-docker-compose logs -f bot
-docker-compose logs -f backend
-
 📁 Project Structure
 dnai-sales/
 ├── backend/
 │   ├── routers/
 │   │   ├── companies.py      # Company management
-│   │   ├── sales_agent.py    # AI chat & voice
+│   │   ├── sales_agent.py    # AI chat, voice, tiers, pricing
 │   │   └── widget.py         # Web widget
 │   ├── services/
 │   │   ├── ai_service.py     # GPT integration
-│   │   └── voice_service.py  # Whisper STT
+│   │   ├── voice_service.py  # Whisper STT
+│   │   └── email_service.py  # SMTP notifications
 │   ├── database.py           # Async DB session
 │   ├── models.py             # SQLAlchemy models
 │   ├── main.py               # FastAPI app
 │   └── requirements.txt
 ├── bot/
-│   ├── handlers.py           # Telegram handlers
+│   ├── handlers.py           # Manager bot handlers
+│   ├── superadmin_bot.py     # SuperAdmin bot
 │   ├── keyboards.py          # UI keyboards
 │   ├── states.py             # FSM states
 │   ├── config.py             # Bot config
@@ -771,155 +664,61 @@ dnai-sales/
 ├── docker-compose.yml
 ├── .env.example
 └── README.md
-
-<img width="393" height="533" alt="image" src="https://github.com/user-attachments/assets/30b96620-5716-459a-ad59-d594684feb04" />
-
-
-
 🔌 API Endpoints
 Sales Agent
-
-POST /sales/{company_id}/chat - Text chat
-
-POST /sales/{company_id}/voice - Voice message processing
-
-POST /sales/{company_id}/configure - Agent configuration
-
+Method	Endpoint	Description
+POST	/sales/{company_id}/chat	Text chat
+POST	/sales/{company_id}/voice	Voice message processing
+POST	/sales/{company_id}/configure	Agent configuration
 Companies
-
-POST /companies/ - Create company
-
-GET /companies/{company_id} - Get company details
-
+Method	Endpoint	Description
+POST	/companies/	Create company
+GET	/companies/{company_id}	Get company details
 Monitoring
-
-GET / - Health check
-
-GET /logs - Application logs
-
-🤖 Bot Commands
-
-/start - Initialize bot and select language
-
-/lang - Change language
-
-/log - View backend logs (admin)
-
-🌍 *Supported Languages*
-
-🇬🇧 English (en)
-
-🇷🇺 Русский (ru)
-
-🇰🇿 Қазақша (kk)
-
-🇰🇬 Кыргызча (ky)
-
-🇺🇿 O'zbekcha (uz)
-
-🇺🇦 Українська (uk)
-
+Method	Endpoint	Description
+GET	/	Health check
+GET	/logs	Application logs
+🌍 Supported Languages
+Flag	Language	Code
+🇬🇧	English	en
+🇷🇺	Русский	ru
+🇰🇿	Қазақша	kk
+🇰🇬	Кыргызча	ky
+🇺🇿	O'zbekcha	uz
+🇺🇦	Українська	uk
 🐛 Troubleshooting
-
-Bot not responding
+Bot not responding:
 
 bash
-
 docker-compose logs bot
-
 docker-compose restart bot
-
-Database connection errors
+Database connection errors:
 
 bash
-
 # Check DATABASE_URL in .env
 # Ensure SSL is enabled for managed databases
 DATABASE_URL=postgresql+asyncpg://...?ssl=require
-Async/await errors
+Async/await errors:
+
 bash
-
 # Ensure all DB operations use async/await
-
 # Use db.flush() instead of db.refresh() to avoid greenlet errors
-
 📊 Performance
-
 Rate Limiting: 100 req/min for chat, 10 req/min for voice
-
 Connection Pooling: 20 connections, 10 overflow
-
 Async Processing: Non-blocking I/O for all operations
-
 🔐 Security
-
 ✅ Rate limiting on all endpoints
-
 ✅ Environment-based secrets
-
 ✅ SSL/TLS for database connections
-
 ✅ Input validation with Pydantic
-
 📝 License
-
 MIT License - see LICENSE file for details
 
-
 🤝 Contributing
-
 Fork the repository
-
 Create a feature branch
-
 Commit your changes
-
 Push to the branch
-
 Open a Pull Request
-
-
-Implementation Plan - Update README.md
-
-Goal Description
-
-Update the README.md file to reflect the current state of the project, including recently added features like the Email Service and multi-channel notifications. Also, add a "Roadmap" section to outline future development.
-
-
-User Review Required
-
- Review the "Roadmap" section to ensure it aligns with the user's vision.
- 
- Confirm the Environment Variables for Email Service.
- 
-Proposed Changes
-
-Documentation
-
-[MODIFY] 
-
-README.md
-
-Features: Add "Multi-Channel Notifications" (Telegram + Email).
-
-Architecture: Mention Email Service.
-
-Tech Stack: Add Email (SMTP) details.
-
-Project Structure: Add backend/services/email_service.py and backend/services/telegram_service.py.
-
-Environment Variables: Add Email configuration (EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASSWORD, ADMIN_EMAIL).
-
-Roadmap: Add a new section with planned features (CRM Integration, Analytics Dashboard, Voice Output, Payment Integration).
-
-Verification Plan
-
-Manual Verification
-
-Visual Check: Render the markdown and ensure it looks correct and covers all points.
-
----
-## Лицензия
-
 © 2025 BizDNAi
-
