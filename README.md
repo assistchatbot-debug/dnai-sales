@@ -1,5 +1,6 @@
 # 🤖 BizDNAi Sales Agent
 **Intelligent AI-powered sales assistant for Telegram with voice recognition and multi-language support.**
+
 [![Python](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104-green.svg)](https://fastapi.tiangolo.com/)
 [![Aiogram](https://img.shields.io/badge/Aiogram-3.x-blue.svg)](https://docs.aiogram.dev/)
