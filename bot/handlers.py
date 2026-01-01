@@ -65,7 +65,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     # Manager menu with buttons
     if is_manager(message.from_user.id,message.bot):
         from aiogram.types import ReplyKeyboardMarkup,KeyboardButton
-        kb=ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📊 Статус"),KeyboardButton(text="📋 Лиды")],[KeyboardButton(text="📢 Каналы"),KeyboardButton(text="🌐 Виджет")],[KeyboardButton(text="📊 Лиды за неделю"),KeyboardButton(text="📊 Лиды за месяц")],[KeyboardButton(text="🏠 Меню")]],resize_keyboard=True)
+        kb=ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📊 Статус"),KeyboardButton(text="📋 Лиды")],[KeyboardButton(text="📢 Каналы"),KeyboardButton(text="🌐 Виджет")],[KeyboardButton(text="💳 Тарифы"),KeyboardButton(text="📊 Лиды за неделю")],[KeyboardButton(text="🏠 Меню")]],resize_keyboard=True)
         await message.answer("🤖 <b>Меню</b>",reply_markup=kb,parse_mode='HTML')
         return
     await state.set_state(SalesFlow.qualifying)
@@ -510,13 +510,18 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
             logging.error(f"Channels command error: {e}")
             await message.answer(f"❌ Ошибка: {str(e)[:50]}")
     
+    elif 'тариф' in text_lower:
+        company_id = getattr(message.bot, 'company_id', 1)
+        text = await format_tier_info(company_id)
+        await message.answer(text, parse_mode='HTML')
+    
     elif 'меню' in text_lower or 'menu' in text_lower:
         from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
         kb = ReplyKeyboardMarkup(
             keyboard=[
                 [KeyboardButton(text="📊 Статус"), KeyboardButton(text="📋 Лиды")],
                 [KeyboardButton(text="📢 Каналы"), KeyboardButton(text="🌐 Виджет")],
-                [KeyboardButton(text="📊 Лиды за неделю"), KeyboardButton(text="📊 Лиды за месяц")],
+                [KeyboardButton(text="💳 Тарифы"), KeyboardButton(text="📊 Лиды за неделю")],
                 [KeyboardButton(text="🏠 Меню")]
             ],
             resize_keyboard=True
@@ -1288,3 +1293,43 @@ async def process_social_name(message: types.Message, state: FSMContext):
         await message.answer(f"❌ Ошибка: {str(e)[:50]}")
 
     await state.clear()
+
+# === Tier Command Handler ===
+async def format_tier_info(company_id: int) -> str:
+    """Format tier info for manager - current tier and usage only"""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f'{API_BASE_URL}/sales/{company_id}/tier-usage') as resp:
+                if resp.status != 200:
+                    return "❌ Ошибка получения данных"
+                usage = await resp.json()
+        
+        text = f"💳 <b>Ваш тариф</b>\n\n"
+        text += f"📦 <b>Тариф:</b> {usage['tier_name']}\n"
+        
+        if usage.get('tier_expiry'):
+            text += f"⏰ Действует до: {usage['tier_expiry'][:10]}\n"
+        
+        text += f"\n📈 <b>Использование этого месяца:</b>\n"
+        leads_pct = int(usage['leads_used'] / usage['leads_limit'] * 100) if usage['leads_limit'] > 0 else 0
+        text += f"👥 Лиды: {usage['leads_used']}/{usage['leads_limit']} ({leads_pct}%)\n"
+        text += f"🌐 Веб-виджеты: {usage['web_widgets_used']}/{usage['web_widgets_limit']}\n"
+        text += f"📱 Соц. виджеты: {usage['social_widgets_used']}/{usage['social_widgets_limit']}\n"
+        
+        text += f"\n─────────────────\n"
+        text += f"📄 <b>Все тарифы:</b>\n"
+        text += f"🔗 https://bizdnai.com/sales/pricing.html\n"
+        text += f"\n📧 Смена тарифа: ceo@bizdnai.com"
+        
+        # Send pricing email
+        try:
+            async with aiohttp.ClientSession() as session:
+                await session.post(f'{API_BASE_URL}/sales/{company_id}/send-pricing-email')
+        except:
+            pass
+        
+        return text
+    except Exception as e:
+        logging.error(f"Tier info error: {e}")
+        return f"❌ Ошибка: {str(e)[:50]}"
+

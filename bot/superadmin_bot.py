@@ -6,7 +6,7 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
 logging.basicConfig(level=logging.INFO)
 API_BASE_URL = 'http://localhost:8005'
@@ -49,7 +49,7 @@ class CompanyFlow(StatesGroup):
     entering_extend_days = State()
 
 def get_main_keyboard():
-    return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📊 Компании"), KeyboardButton(text="📈 Лиды")],[KeyboardButton(text="⚙️ Статус"), KeyboardButton(text="🏠 Меню")]], resize_keyboard=True)
+    return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📊 Компании"), KeyboardButton(text="📈 Лиды")],[KeyboardButton(text="💳 Тарифы"), KeyboardButton(text="⚙️ Статус")],[KeyboardButton(text="🏠 Меню")]], resize_keyboard=True)
 
 def get_company_menu_keyboard():
     return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="➕ Создать компанию"), KeyboardButton(text="✏️ Редактировать компанию")],[KeyboardButton(text="📋 Список компаний")],[KeyboardButton(text="🎯 Установить тариф"), KeyboardButton(text="⏰ Продлить тариф")],[KeyboardButton(text="◀️ Назад")]], resize_keyboard=True)
@@ -77,6 +77,114 @@ async def btn_back_global(message: types.Message, state: FSMContext):
 async def btn_list_companies(message: types.Message, state: FSMContext):
     await state.clear()
     await btn_companies(message, state)
+
+
+class TierEdit(StatesGroup):
+    waiting_price = State()
+    waiting_leads = State()
+    waiting_ai_price = State()
+
+@dp.message(F.text == "💳 Тарифы")
+async def btn_tiers(message: types.Message, state: FSMContext):
+    await state.clear()
+    try:
+        async with aiohttp.ClientSession() as session:
+            # Тарифы подписки
+            async with session.get(f'{API_BASE_URL}/sales/tiers') as resp:
+                tiers = await resp.json() if resp.status == 200 else []
+            # Пакеты AI
+            async with session.get(f'{API_BASE_URL}/sales/ai-packages') as resp:
+                packages = await resp.json() if resp.status == 200 else []
+            
+            lines = ["💳 <b>Месячные тарифы</b>", ""]
+            buttons = []
+            for t in tiers:
+                lines.append(f"<b>{t['name_ru']}</b> — ${t['price_usd']}/мес | {t['leads_limit']} лидов")
+                buttons.append([
+                    InlineKeyboardButton(text=f"💰 {t['tier']}", callback_data=f"tierprice_{t['tier']}"),
+                    InlineKeyboardButton(text=f"👥 {t['tier']}", callback_data=f"tierleads_{t['tier']}")
+                ])
+            
+            lines.append("")
+            lines.append("🤖 <b>Пакеты AI (разово)</b>")
+            lines.append("")
+            for p in packages:
+                lines.append(f"<b>{p['name_ru']}</b> — ${p['price_usd']}")
+                buttons.append([
+                    InlineKeyboardButton(text=f"🤖 {p['package']}", callback_data=f"aiprice_{p['package']}")
+                ])
+            
+            lines.append("")
+            lines.append("<i>💰/👥 — тарифы, 🤖 — AI пакеты</i>")
+            kb = InlineKeyboardMarkup(inline_keyboard=buttons)
+            await message.answer("\n".join(lines), parse_mode='HTML', reply_markup=kb)
+    except Exception as e:
+        await message.answer(f"❌ {str(e)[:50]}")
+
+@dp.callback_query(F.data.startswith("tierprice_"))
+async def cb_price(callback: types.CallbackQuery, state: FSMContext):
+    tier = callback.data.replace("tierprice_", "")
+    await state.update_data(tier=tier)
+    await state.set_state(TierEdit.waiting_price)
+    await callback.message.answer(f"💰 Введите новую цену для {tier.upper()} (число):")
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("tierleads_"))
+async def cb_leads(callback: types.CallbackQuery, state: FSMContext):
+    tier = callback.data.replace("tierleads_", "")
+    await state.update_data(tier=tier)
+    await state.set_state(TierEdit.waiting_leads)
+    await callback.message.answer(f"👥 Введите лимит лидов для {tier.upper()} (число):")
+    await callback.answer()
+
+
+@dp.callback_query(F.data.startswith("aiprice_"))
+async def cb_aiprice(callback: types.CallbackQuery, state: FSMContext):
+    pkg = callback.data.replace("aiprice_", "")
+    await state.update_data(pkg=pkg)
+    await state.set_state(TierEdit.waiting_ai_price)
+    await callback.message.answer(f"🤖 Введите новую цену для {pkg.upper()} (число):")
+    await callback.answer()
+
+@dp.message(TierEdit.waiting_price)
+async def proc_price(message: types.Message, state: FSMContext):
+    try:
+        price = int(message.text.strip())
+        data = await state.get_data()
+        async with aiohttp.ClientSession() as session:
+            await session.patch(f'{API_BASE_URL}/sales/tiers/{data["tier"]}', json={'price_usd': price})
+        await message.answer(f"✅ Цена {data['tier'].upper()} = ${price}/мес", reply_markup=get_main_keyboard())
+    except:
+        await message.answer("❌ Введите число")
+        return
+    await state.clear()
+
+@dp.message(TierEdit.waiting_leads)
+async def proc_leads(message: types.Message, state: FSMContext):
+    try:
+        limit = int(message.text.strip())
+        data = await state.get_data()
+        async with aiohttp.ClientSession() as session:
+            await session.patch(f'{API_BASE_URL}/sales/tiers/{data["tier"]}', json={'leads_limit': limit})
+        await message.answer(f"✅ Лимит {data['tier'].upper()} = {limit}/мес", reply_markup=get_main_keyboard())
+    except:
+        await message.answer("❌ Введите число")
+        return
+    await state.clear()
+
+
+@dp.message(TierEdit.waiting_ai_price)
+async def proc_ai_price(message: types.Message, state: FSMContext):
+    try:
+        price = int(message.text.strip())
+        data = await state.get_data()
+        async with aiohttp.ClientSession() as session:
+            await session.patch(f'{API_BASE_URL}/sales/ai-packages/{data["pkg"]}', json={'price_usd': price})
+        await message.answer(f"✅ AI пакет {data['pkg'].upper()} = ${price}", reply_markup=get_main_keyboard())
+    except:
+        await message.answer("❌ Введите число")
+        return
+    await state.clear()
 
 @dp.message(F.text == "📊 Компании")
 async def btn_companies(message: types.Message, state: FSMContext):

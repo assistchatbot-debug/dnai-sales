@@ -15,6 +15,39 @@ class EmailService:
         self.smtp_password = os.getenv('SMTP_PASSWORD')
         self.executor = ThreadPoolExecutor(max_workers=3)
         
+
+    async def send_html_email(self, to_email: str, subject: str, html_body: str):
+        """Send a simple HTML email"""
+        if not all([self.smtp_user, self.smtp_password]):
+            logging.warning('⚠️ SMTP credentials not configured')
+            return False
+        
+        if not to_email:
+            logging.error('❌ No recipient email provided')
+            return False
+
+        def _send():
+            try:
+                msg = MIMEMultipart('alternative')
+                msg['Subject'] = subject
+                msg['From'] = self.smtp_user
+                msg['To'] = to_email
+                
+                msg.attach(MIMEText(html_body, 'html', 'utf-8'))
+                
+                with smtplib.SMTP_SSL(self.smtp_host, self.smtp_port) as server:
+                    server.login(self.smtp_user, self.smtp_password)
+                    server.sendmail(self.smtp_user, to_email, msg.as_string())
+                
+                logging.info(f'✅ Email sent to {to_email}')
+                return True
+            except Exception as e:
+                logging.error(f'❌ Failed to send email: {e}')
+                return False
+        
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(self.executor, _send)
+
     def _send_email_sync(self, lead_contact: str, conversation_history: List[Dict[str, str]], ai_summary: str, lead_phone: str = None, to_email: str = None):
         """
         Synchronous email sending function (runs in thread pool)

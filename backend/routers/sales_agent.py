@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request, BackgroundTasks
+from fastapi.responses import HTMLResponse
 import httpx
 import os
 import logging
@@ -661,7 +662,7 @@ Telegram ID: {user_id}
 {message_text}
 """
     
-    await email_service.send_email(
+    await email_service.send_html_email(
         to_email=company.email,
         subject=f"Сообщение от клиента - {company.name}",
         body=email_text
@@ -1257,3 +1258,292 @@ async def get_widget_by_id(company_id:int,widget_id:int,db:AsyncSession=Depends(
     return {"id":w.id,"company_id":w.company_id,"channel_name":w.channel_name,"greeting_message":w.greeting_message,"greetings":{"ru":w.greeting_ru or w.greeting_message,"en":w.greeting_en or w.greeting_message,"kz":w.greeting_kz or w.greeting_message,"ky":w.greeting_ky or w.greeting_message,"uz":w.greeting_uz or w.greeting_message,"uk":w.greeting_uk or w.greeting_message},"is_active":w.is_active}
 
 
+
+# === Tier Settings Endpoints ===
+
+@router.get('/tiers')
+async def get_tiers(db: AsyncSession = Depends(get_db)):
+    """Get all tier pricing plans"""
+    from models import TierSettings
+    result = await db.execute(select(TierSettings).where(TierSettings.is_active == True).order_by(TierSettings.sort_order))
+    tiers = result.scalars().all()
+    return [{
+        'tier': t.tier,
+        'name_ru': t.name_ru,
+        'price_usd': t.price_usd,
+        'leads_limit': t.leads_limit,
+        'web_widgets_limit': t.web_widgets_limit,
+        'social_widgets_limit': t.social_widgets_limit,
+        'features_ru': t.features_ru or []
+    } for t in tiers]
+
+@router.get('/ai-packages')
+async def get_ai_packages(db: AsyncSession = Depends(get_db)):
+    """Get all AI agent packages"""
+    from models import AIAgentPackage
+    result = await db.execute(select(AIAgentPackage).where(AIAgentPackage.is_active == True).order_by(AIAgentPackage.sort_order))
+    packages = result.scalars().all()
+    return [{
+        'package': p.package,
+        'name_ru': p.name_ru,
+        'price_usd': p.price_usd,
+        'features_ru': p.features_ru or []
+    } for p in packages]
+
+@router.get('/{company_id}/tier-usage')
+async def get_tier_usage(company_id: int, db: AsyncSession = Depends(get_db)):
+    """Get company tier and usage stats"""
+    from models import TierSettings
+    from datetime import datetime, timedelta
+    
+    # Get company
+    result = await db.execute(select(Company).where(Company.id == company_id))
+    company = result.scalars().first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    
+    # Get tier settings
+    tier_result = await db.execute(select(TierSettings).where(TierSettings.tier == (company.tier or 'free')))
+    tier = tier_result.scalars().first()
+    
+    # Count leads this month
+    month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    leads_result = await db.execute(
+        select(Lead).where(Lead.company_id == company_id, Lead.created_at >= month_start)
+    )
+    leads_this_month = len(leads_result.scalars().all())
+    
+    # Count widgets
+    web_widgets_result = await db.execute(select(WebWidget).where(WebWidget.company_id == company_id, WebWidget.is_active == True))
+    web_widgets_count = len(web_widgets_result.scalars().all())
+    
+    social_widgets_result = await db.execute(select(SocialWidget).where(SocialWidget.company_id == company_id, SocialWidget.is_active == True))
+    social_widgets_count = len(social_widgets_result.scalars().all())
+    
+    return {
+        'company_id': company_id,
+        'company_name': company.name,
+        'current_tier': company.tier or 'free',
+        'tier_name': tier.name_ru if tier else '🆓 FREE',
+        'tier_expiry': company.tier_expiry.isoformat() if company.tier_expiry else None,
+        'leads_used': leads_this_month,
+        'leads_limit': tier.leads_limit if tier else 20,
+        'web_widgets_used': web_widgets_count,
+        'web_widgets_limit': tier.web_widgets_limit if tier else 1,
+        'social_widgets_used': social_widgets_count,
+        'social_widgets_limit': tier.social_widgets_limit if tier else 0,
+        'ai_package': company.ai_package or 'basic'
+    }
+
+
+@router.get('/pricing.html', response_class=HTMLResponse)
+async def get_pricing_html(db: AsyncSession = Depends(get_db)):
+    """Generate dynamic pricing HTML page from database"""
+    from fastapi.responses import HTMLResponse
+    from models import TierSettings, AIAgentPackage
+    
+    # Get tiers
+    tiers_result = await db.execute(select(TierSettings).where(TierSettings.is_active == True).order_by(TierSettings.sort_order))
+    tiers = tiers_result.scalars().all()
+    
+    # Get AI packages
+    packages_result = await db.execute(select(AIAgentPackage).where(AIAgentPackage.is_active == True).order_by(AIAgentPackage.sort_order))
+    packages = packages_result.scalars().all()
+    
+    # Generate tier cards
+    tier_cards = ""
+    for t in tiers:
+        features_html = "".join([f'<li>{f}</li>' for f in (t.features_ru or [])])
+        tier_cards += f"""
+        <div class="tier-card">
+            <div class="tier-name">{t.name_ru}</div>
+            <div class="tier-price">${t.price_usd}<span style="font-size:0.5em;color:#888">/мес</span></div>
+            <ul class="tier-features">
+                <li>👥 {t.leads_limit} лидов/мес</li>
+                <li>🌐 {t.web_widgets_limit} веб-виджет</li>
+                <li>📱 {t.social_widgets_limit} соц. виджетов</li>
+            </ul>
+        </div>"""
+    
+    # Generate package rows
+    package_rows = ""
+    for p in packages:
+        features_html = "".join([f'<div class="feature">{f}</div>' for f in (p.features_ru or [])])
+        package_rows += f"""
+        <tr>
+            <td><strong>{p.name_ru}</strong></td>
+            <td class="price">${p.price_usd}</td>
+            <td>{features_html}</td>
+        </tr>"""
+    
+    html = f"""<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тарифы BizDNAi 2025</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: 'Segoe UI', Tahoma, sans-serif; background: linear-gradient(135deg, #667eea, #764ba2); padding: 40px 20px; }}
+        .container {{ max-width: 1200px; margin: 0 auto; background: white; border-radius: 20px; padding: 40px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }}
+        h1 {{ text-align: center; color: #667eea; margin-bottom: 10px; font-size: 2.5em; }}
+        h2 {{ color: #444; margin: 30px 0 20px; padding-bottom: 10px; border-bottom: 3px solid #667eea; }}
+        .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; margin: 30px 0; }}
+        .tier-card {{ background: white; border: 2px solid #eee; border-radius: 12px; padding: 25px; transition: all 0.3s; }}
+        .tier-card:hover {{ border-color: #667eea; box-shadow: 0 8px 24px rgba(102,126,234,0.2); transform: translateY(-5px); }}
+        .tier-name {{ font-size: 1.5em; font-weight: bold; color: #333; margin-bottom: 10px; }}
+        .tier-price {{ font-size: 2em; font-weight: bold; color: #667eea; margin-bottom: 15px; }}
+        .tier-features {{ list-style: none; padding: 0; }}
+        .tier-features li {{ padding: 8px 0; color: #555; }}
+        .tier-features li::before {{ content: "✅ "; color: #4CAF50; }}
+        table {{ width: 100%; border-collapse: collapse; margin: 20px 0; }}
+        th {{ background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 15px; text-align: left; }}
+        td {{ padding: 12px 15px; border-bottom: 1px solid #eee; }}
+        .price {{ font-size: 1.3em; font-weight: bold; color: #667eea; }}
+        .feature {{ padding: 5px 0; color: #555; }}
+        .feature::before {{ content: "✅ "; }}
+        .note {{ background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 4px; }}
+        .contact {{ text-align: center; margin-top: 40px; padding-top: 30px; border-top: 2px solid #eee; }}
+        .contact a {{ color: #667eea; text-decoration: none; margin: 0 15px; font-weight: 600; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>💎 Тарифы BizDNAi 2025</h1>
+        <p style="text-align:center;color:#666;margin-bottom:40px">Автоматизация продаж с AI-помощником</p>
+        <h2>📅 Месячная подписка</h2>
+        <div class="grid">{tier_cards}</div>
+        <h2>🤖 Настройка AI Агента</h2>
+        <div class="note"><strong>⚠️ Разовый платёж</strong></div>
+        <table><thead><tr><th>Пакет</th><th>Цена</th><th>Что включено</th></tr></thead><tbody>{package_rows}</tbody></table>
+        <div class="contact">
+            <h3 style="color:#667eea;margin-bottom:15px">📞 Контакты</h3>
+            <a href="https://bizdnai.com">🌐 bizdnai.com</a>
+            <a href="mailto:ceo@bizdnai.com">✉️ ceo@bizdnai.com</a>
+        </div>
+    </div>
+</body>
+</html>"""
+    
+    return HTMLResponse(content=html)
+
+
+@router.post('/{company_id}/send-pricing-email')
+async def send_pricing_email(company_id: int, db: AsyncSession = Depends(get_db)):
+    """Send pricing HTML to company manager email"""
+    from models import TierSettings, AIAgentPackage
+    
+    # Get company
+    result = await db.execute(select(Company).where(Company.id == company_id))
+    company = result.scalars().first()
+    if not company or not company.email:
+        return {'status': 'error', 'message': 'No email configured'}
+    
+    # Get tiers
+    tiers_result = await db.execute(select(TierSettings).where(TierSettings.is_active == True).order_by(TierSettings.sort_order))
+    tiers = tiers_result.scalars().all()
+    
+    # Get packages
+    packages_result = await db.execute(select(AIAgentPackage).where(AIAgentPackage.is_active == True).order_by(AIAgentPackage.sort_order))
+    packages = packages_result.scalars().all()
+    
+    # Generate HTML email
+    tier_rows = ""
+    for t in tiers:
+        features = ", ".join(t.features_ru or [])
+        tier_rows += f"<tr><td><b>{t.name_ru}</b></td><td>${t.price_usd}/мес</td><td>{t.leads_limit} лидов</td><td>{t.web_widgets_limit} веб + {t.social_widgets_limit} соц.</td></tr>"
+    
+    package_rows = ""
+    for p in packages:
+        features = ", ".join(p.features_ru or [])
+        package_rows += f"<tr><td><b>{p.name_ru}</b></td><td>${p.price_usd}</td><td>{features[:100]}...</td></tr>"
+    
+    html_body = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; padding: 20px;">
+        <h1 style="color: #667eea;">💎 Тарифы BizDNAi 2025</h1>
+        
+        <h2>📅 Месячная подписка</h2>
+        <table border="1" cellpadding="10" cellspacing="0" style="border-collapse: collapse; width: 100%;">
+            <tr style="background: #667eea; color: white;">
+                <th>Тариф</th><th>Цена</th><th>Лиды</th><th>Виджеты</th>
+            </tr>
+            {tier_rows}
+        </table>
+        
+        <h2>🤖 Настройка AI Агента (разово)</h2>
+        <table border="1" cellpadding="10" cellspacing="0" style="border-collapse: collapse; width: 100%;">
+            <tr style="background: #667eea; color: white;">
+                <th>Пакет</th><th>Цена</th><th>Включено</th>
+            </tr>
+            {package_rows}
+        </table>
+        
+        <p style="margin-top: 30px; text-align: center;">
+            <a href="https://bizdnai.com/sales/pricing.html" style="display: inline-block; background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 15px 40px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 18px;">📄 Подробнее о тарифах</a>
+        </p>
+        <p style="text-align: center; margin-top: 20px;">
+            📧 Для смены тарифа: <b>ceo@bizdnai.com</b>
+        </p>
+    </body>
+    </html>
+    """
+    
+    try:
+        await email_service.send_html_email(
+            to_email=company.email,
+            subject="💎 Тарифы BizDNAi 2025",
+            html_body=html_body
+        )
+        logging.info(f"✅ Pricing email sent to {company.email}")
+        return {'status': 'ok', 'email': company.email}
+    except Exception as e:
+        logging.error(f"Failed to send pricing email: {e}")
+        return {'status': 'error', 'message': str(e)}
+
+
+@router.patch('/tiers/{tier}')
+async def update_tier(tier: str, data: dict, db: AsyncSession = Depends(get_db)):
+    """Update tier settings (SuperAdmin only)"""
+    from models import TierSettings
+    
+    result = await db.execute(select(TierSettings).where(TierSettings.tier == tier))
+    tier_obj = result.scalars().first()
+    
+    if not tier_obj:
+        raise HTTPException(status_code=404, detail="Tier not found")
+    
+    if 'price_usd' in data:
+        tier_obj.price_usd = int(data['price_usd'])
+    if 'leads_limit' in data:
+        tier_obj.leads_limit = int(data['leads_limit'])
+    if 'web_widgets_limit' in data:
+        tier_obj.web_widgets_limit = int(data['web_widgets_limit'])
+    if 'social_widgets_limit' in data:
+        tier_obj.social_widgets_limit = int(data['social_widgets_limit'])
+    
+    await db.commit()
+    await db.refresh(tier_obj)
+    
+    logging.info(f"✅ Tier {tier} updated: {data}")
+    
+    return {
+        'tier': tier_obj.tier,
+        'price_usd': tier_obj.price_usd,
+        'leads_limit': tier_obj.leads_limit,
+        'status': 'updated'
+    }
+
+
+@router.patch('/ai-packages/{package}')
+async def update_ai_package(package: str, data: dict, db: AsyncSession = Depends(get_db)):
+    """Update AI package price"""
+    from models import AIAgentPackage
+    result = await db.execute(select(AIAgentPackage).where(AIAgentPackage.package == package))
+    pkg = result.scalars().first()
+    if not pkg:
+        raise HTTPException(status_code=404, detail="Package not found")
+    if 'price_usd' in data:
+        pkg.price_usd = int(data['price_usd'])
+    await db.commit()
+    return {'package': pkg.package, 'price_usd': pkg.price_usd, 'status': 'updated'}

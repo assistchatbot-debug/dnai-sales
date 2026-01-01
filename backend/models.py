@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Float, Text, JSON, BigInteger
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from sqlalchemy.dialects.postgresql import UUID, JSONB, INET
+from sqlalchemy.dialects.postgresql import UUID, JSONB, INET, ARRAY
 import uuid
 from database import Base
 
@@ -41,6 +41,9 @@ class Company(Base):
     # Subscription tier
     tier = Column(String, default="free")  # free, basic, pro, enterprise
     tier_expiry = Column(DateTime(timezone=True), nullable=True)
+    ai_package = Column(String(20), default='basic')
+    leads_used_this_month = Column(Integer, default=0)
+    leads_reset_date = Column(DateTime, nullable=True)
     
     
     # Relationships
@@ -246,3 +249,28 @@ class WebWidget(Base):
     
     # Relationship
     company = relationship("Company", back_populates="web_widgets")
+
+class TierSettings(Base):
+    __tablename__ = 'tier_settings'
+    tier = Column(String(20), primary_key=True)
+    name_ru = Column(String(50), nullable=False)
+    price_usd = Column(Integer, nullable=False)
+    leads_limit = Column(Integer, nullable=False)
+    web_widgets_limit = Column(Integer, nullable=False)
+    social_widgets_limit = Column(Integer, nullable=False)
+    features_ru = Column(ARRAY(Text), default=[])
+    ai_setup_level = Column(String(20), default='basic')
+    support_level = Column(String(20), default='email')
+    sort_order = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True)
+    updated_at = Column(DateTime, server_default=func.now())
+
+class AIAgentPackage(Base):
+    __tablename__ = 'ai_agent_packages'
+    package = Column(String(20), primary_key=True)
+    name_ru = Column(String(50), nullable=False)
+    price_usd = Column(Integer, nullable=False)
+    features_ru = Column(ARRAY(Text), default=[])
+    sort_order = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True)
+    updated_at = Column(DateTime, server_default=func.now())
