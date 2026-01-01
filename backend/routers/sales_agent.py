@@ -1338,7 +1338,7 @@ async def get_tier_usage(company_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.get('/pricing.html', response_class=HTMLResponse)
 async def get_pricing_html(db: AsyncSession = Depends(get_db)):
-    """Generate dynamic pricing HTML page from database"""
+    """Generate dynamic pricing HTML page from database with language switcher"""
     from fastapi.responses import HTMLResponse
     from models import TierSettings, AIAgentPackage
     
@@ -1350,30 +1350,44 @@ async def get_pricing_html(db: AsyncSession = Depends(get_db)):
     packages_result = await db.execute(select(AIAgentPackage).where(AIAgentPackage.is_active == True).order_by(AIAgentPackage.sort_order))
     packages = packages_result.scalars().all()
     
-    # Generate tier cards
+    # Generate tier cards with data attributes for both languages
     tier_cards = ""
     for t in tiers:
-        features_html = "".join([f'<li>{f}</li>' for f in (t.features_ru or [])])
         tier_cards += f"""
         <div class="tier-card">
             <div class="tier-name">{t.name_ru}</div>
-            <div class="tier-price">${t.price_usd}<span style="font-size:0.5em;color:#888">/мес</span></div>
+            <div class="tier-price">${t.price_usd}<span style="font-size:0.5em;color:#888" data-ru="/мес" data-en="/mo">/мес</span></div>
             <ul class="tier-features">
-                <li>👥 {t.leads_limit} лидов/мес</li>
-                <li>🌐 {t.web_widgets_limit} веб-виджет</li>
-                <li>📱 {t.social_widgets_limit} соц. виджетов</li>
+                <li>👥 {t.leads_limit} <span data-ru="лидов/мес" data-en="leads/mo">лидов/мес</span></li>
+                <li>🌐 {t.web_widgets_limit} <span data-ru="веб-виджет" data-en="web widget">веб-виджет</span></li>
+                <li>📱 {t.social_widgets_limit} <span data-ru="соц. виджетов" data-en="social widgets">соц. виджетов</span></li>
             </ul>
         </div>"""
+    
+    # AI package translations
+    ai_names = {
+        'basic': ('🎯 Базовый', '🎯 Basic'),
+        'standard': ('📊 Стандарт', '📊 Standard'),
+        'advanced': ('⚡ Продвинутый', '⚡ Advanced'),
+        'custom': ('🎨 Кастомный', '🎨 Custom')
+    }
+    ai_features = {
+        'basic': ('Стандартное приветствие, базовая квалификация, сбор контактов', 'Standard greeting, basic qualification, contact collection'),
+        'standard': ('Персонализация, расширенная квалификация, FAQ', 'Personalization, extended qualification, FAQ training'),
+        'advanced': ('База знаний, умная квалификация, сценарии', 'Knowledge base, smart qualification, dialog scripts'),
+        'custom': ('Полная настройка, CRM интеграция, 24/7 поддержка', 'Full customization, CRM integration, 24/7 support')
+    }
     
     # Generate package rows
     package_rows = ""
     for p in packages:
-        features_html = "".join([f'<div class="feature">{f}</div>' for f in (p.features_ru or [])])
+        name_ru, name_en = ai_names.get(p.package, (p.name_ru, p.name_ru))
+        feat_ru, feat_en = ai_features.get(p.package, ('...', '...'))
         package_rows += f"""
         <tr>
-            <td><strong>{p.name_ru}</strong></td>
+            <td><strong data-ru="{name_ru}" data-en="{name_en}">{name_ru}</strong></td>
             <td class="price">${p.price_usd}</td>
-            <td>{features_html}</td>
+            <td data-ru="{feat_ru}" data-en="{feat_en}">{feat_ru}</td>
         </tr>"""
     
     html = f"""<!DOCTYPE html>
@@ -1381,11 +1395,14 @@ async def get_pricing_html(db: AsyncSession = Depends(get_db)):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Тарифы BizDNAi 2025</title>
+    <title data-ru="Тарифы BizDNAi 2025" data-en="BizDNAi Pricing 2025">Тарифы BizDNAi 2025</title>
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{ font-family: 'Segoe UI', Tahoma, sans-serif; background: linear-gradient(135deg, #667eea, #764ba2); padding: 40px 20px; }}
-        .container {{ max-width: 1200px; margin: 0 auto; background: white; border-radius: 20px; padding: 40px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }}
+        .container {{ max-width: 1200px; margin: 0 auto; background: white; border-radius: 20px; padding: 40px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); position: relative; }}
+        .lang-switcher {{ position: absolute; top: 20px; right: 20px; }}
+        .lang-btn {{ padding: 8px 16px; border: 2px solid #667eea; background: white; color: #667eea; border-radius: 20px; cursor: pointer; font-weight: bold; transition: all 0.3s; }}
+        .lang-btn:hover, .lang-btn.active {{ background: #667eea; color: white; }}
         h1 {{ text-align: center; color: #667eea; margin-bottom: 10px; font-size: 2.5em; }}
         h2 {{ color: #444; margin: 30px 0 20px; padding-bottom: 10px; border-bottom: 3px solid #667eea; }}
         .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; margin: 30px 0; }}
@@ -1395,13 +1412,10 @@ async def get_pricing_html(db: AsyncSession = Depends(get_db)):
         .tier-price {{ font-size: 2em; font-weight: bold; color: #667eea; margin-bottom: 15px; }}
         .tier-features {{ list-style: none; padding: 0; }}
         .tier-features li {{ padding: 8px 0; color: #555; }}
-        .tier-features li::before {{ content: "✅ "; color: #4CAF50; }}
         table {{ width: 100%; border-collapse: collapse; margin: 20px 0; }}
         th {{ background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 15px; text-align: left; }}
         td {{ padding: 12px 15px; border-bottom: 1px solid #eee; }}
         .price {{ font-size: 1.3em; font-weight: bold; color: #667eea; }}
-        .feature {{ padding: 5px 0; color: #555; }}
-        .feature::before {{ content: "✅ "; }}
         .note {{ background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 4px; }}
         .contact {{ text-align: center; margin-top: 40px; padding-top: 30px; border-top: 2px solid #eee; }}
         .contact a {{ color: #667eea; text-decoration: none; margin: 0 15px; font-weight: 600; }}
@@ -1409,19 +1423,59 @@ async def get_pricing_html(db: AsyncSession = Depends(get_db)):
 </head>
 <body>
     <div class="container">
-        <h1>💎 Тарифы BizDNAi 2025</h1>
-        <p style="text-align:center;color:#666;margin-bottom:40px">Автоматизация продаж с AI-помощником</p>
-        <h2>📅 Месячная подписка</h2>
+        <div class="lang-switcher">
+            <button class="lang-btn active" onclick="setLang('ru')">🇷🇺 RU</button>
+            <button class="lang-btn" onclick="setLang('en')">🇺🇸 EN</button>
+        </div>
+        
+        <h1 data-ru="💎 Тарифы BizDNAi 2025" data-en="💎 BizDNAi Pricing 2025">💎 Тарифы BizDNAi 2025</h1>
+        <p style="text-align:center;color:#666;margin-bottom:40px" data-ru="Автоматизация продаж с AI-помощником" data-en="Sales automation with AI assistant">Автоматизация продаж с AI-помощником</p>
+        
+        <h2 data-ru="📅 Месячная подписка" data-en="📅 Monthly Subscription">📅 Месячная подписка</h2>
         <div class="grid">{tier_cards}</div>
-        <h2>🤖 Настройка AI Агента</h2>
-        <div class="note"><strong>⚠️ Разовый платёж</strong></div>
-        <table><thead><tr><th>Пакет</th><th>Цена</th><th>Что включено</th></tr></thead><tbody>{package_rows}</tbody></table>
+        
+        <h2 data-ru="🤖 Настройка AI Агента" data-en="🤖 AI Agent Setup">🤖 Настройка AI Агента</h2>
+        <div class="note" data-ru="⚠️ Разовый платёж" data-en="⚠️ One-time payment">⚠️ Разовый платёж</div>
+        <table>
+            <thead>
+                <tr>
+                    <th data-ru="Пакет" data-en="Package">Пакет</th>
+                    <th data-ru="Цена" data-en="Price">Цена</th>
+                    <th data-ru="Включено" data-en="Included">Включено</th>
+                </tr>
+            </thead>
+            <tbody>{package_rows}</tbody>
+        </table>
+        
         <div class="contact">
-            <h3 style="color:#667eea;margin-bottom:15px">📞 Контакты</h3>
+            <h3 style="color:#667eea;margin-bottom:15px" data-ru="📞 Контакты" data-en="📞 Contact Us">📞 Контакты</h3>
             <a href="https://bizdnai.com">🌐 bizdnai.com</a>
             <a href="mailto:ceo@bizdnai.com">✉️ ceo@bizdnai.com</a>
         </div>
     </div>
+    
+    <script>
+        let currentLang = localStorage.getItem('pricing_lang') || 'ru';
+        
+        function setLang(lang) {{
+            currentLang = lang;
+            localStorage.setItem('pricing_lang', lang);
+            
+            document.querySelectorAll('.lang-btn').forEach(btn => {{
+                btn.classList.remove('active');
+                if (btn.textContent.includes(lang.toUpperCase())) btn.classList.add('active');
+            }});
+            
+            document.querySelectorAll('[data-ru][data-en]').forEach(el => {{
+                el.textContent = el.getAttribute('data-' + lang);
+            }});
+            
+            document.documentElement.lang = lang;
+        }}
+        
+        // Apply saved language on load
+        setLang(currentLang);
+    </script>
 </body>
 </html>"""
     
