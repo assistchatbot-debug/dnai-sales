@@ -757,6 +757,68 @@ async def process_edit_greeting(message: types.Message, state: FSMContext):
         await state.clear()
 
 
+
+
+@router.message(ManagerFlow.editing_social_greeting)
+async def process_social_greeting(message: types.Message, state: FSMContext):
+    """Process new social widget greeting"""
+    if not is_manager(message.from_user.id, message.bot):
+        await message.answer("❌ Недостаточно прав")
+        return
+
+    data = await state.get_data()
+    widget_id = data.get('editing_social_widget_id')
+    company_id = getattr(message.bot, 'company_id', 1)
+    new_greeting = message.text
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.patch(
+                f'{API_BASE_URL}/sales/companies/{company_id}/widgets/{widget_id}',
+                json={'greeting_message': new_greeting}
+            ) as resp:
+                if resp.status == 200:
+                    await message.answer(
+                        f"✅ Приветствие канала #{widget_id} обновлено!\n\n"
+                        "AI переводит на все языки...",
+                        parse_mode='HTML'
+                    )
+                else:
+                    await message.answer(f"❌ Ошибка обновления (код {resp.status})")
+    except Exception as e:
+        logging.error(f"Update social greeting error: {e}")
+        await message.answer(f"❌ Ошибка: {str(e)[:50]}")
+
+    await state.clear()
+
+@router.message(ManagerFlow.editing_social_name)
+async def process_social_name(message: types.Message, state: FSMContext):
+    """Process new social widget name"""
+    if not is_manager(message.from_user.id, message.bot):
+        await message.answer("❌ Недостаточно прав")
+        return
+
+    data = await state.get_data()
+    widget_id = data.get('editing_social_widget_id')
+    company_id = getattr(message.bot, 'company_id', 1)
+    new_name = message.text
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.patch(
+                f'{API_BASE_URL}/sales/companies/{company_id}/widgets/{widget_id}',
+                json={'channel_name': new_name}
+            ) as resp:
+                if resp.status == 200:
+                    await message.answer(f"✅ Название канала изменено на: {new_name}")
+                else:
+                    await message.answer(f"❌ Ошибка обновления (код {resp.status})")
+    except Exception as e:
+        logging.error(f"Update social name error: {e}")
+        await message.answer(f"❌ Ошибка: {str(e)[:50]}")
+
+    await state.clear()
+
 # === GENERAL HANDLER (MUST BE LAST) ===
 
 @router.message(ManagerFlow.editing_widget_domain)
@@ -892,18 +954,45 @@ async def create_widget_callback(callback: types.CallbackQuery, state: FSMContex
     await callback.answer()
 
 @router.callback_query(F.data.startswith("edit_widget_"))
-async def edit_widget_callback(callback: types.CallbackQuery):
-    """Handle 'Edit Widget' button"""
+async def edit_widget_callback(callback: types.CallbackQuery, state: FSMContext):
+    """Handle 'Edit Widget' button - show edit menu for social widget"""
     if not is_manager(callback.from_user.id, callback.bot):
         await callback.answer("❌ Недостаточно прав", show_alert=True)
         return
-    
+
     widget_id = callback.data.split("_")[-1]
-    await callback.message.answer(
-        f"✏️ Редактирование канала #{widget_id}\n\n"
-        "🚧 В разработке...",
-        parse_mode='HTML'
-    )
+    company_id = getattr(callback.bot, 'company_id', 1)
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f'{API_BASE_URL}/sales/companies/{company_id}/widgets/{widget_id}') as resp:
+                if resp.status == 200:
+                    widget = await resp.json()
+                    channel_name = widget.get('channel_name', 'Unknown')
+                    greeting = (widget.get('greeting_message') or 'Не задано')[:50]
+                    
+                    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text="💬 Изменить приветствие", callback_data=f"editsocialgreeting_{widget_id}")],
+                        [InlineKeyboardButton(text="📛 Изменить название", callback_data=f"editsocialname_{widget_id}")],
+                        [InlineKeyboardButton(text="« Назад к каналам", callback_data="back_to_channels")]
+                    ])
+                    
+                    await callback.message.edit_text(
+                        f"✏️ <b>Редактирование канала #{widget_id}</b>\n\n"
+                        f"📛 Название: {channel_name}\n"
+                        f"💬 Приветствие: {greeting}...\n\n"
+                        "Выберите что хотите изменить:",
+                        reply_markup=keyboard,
+                        parse_mode='HTML'
+                    )
+                else:
+                    await callback.message.answer("❌ Канал не найден")
+    except Exception as e:
+        logging.error(f"Edit widget error: {e}")
+        await callback.message.answer(f"❌ Ошибка: {str(e)[:50]}")
+    
+    await callback.answer()
     await callback.answer()
 
 @router.callback_query(F.data.startswith("delete_widget_"))
@@ -1101,3 +1190,101 @@ async def create_webwidget_callback(callback: types.CallbackQuery, state: FSMCon
     )
     await callback.answer()
 
+
+# === Social Widget Edit Handlers ===
+@router.callback_query(F.data.startswith("editsocialgreeting_"))
+async def edit_social_greeting_callback(callback: types.CallbackQuery, state: FSMContext):
+    """Start editing social widget greeting"""
+    if not is_manager(callback.from_user.id, callback.bot):
+        await callback.answer("❌ Недостаточно прав", show_alert=True)
+        return
+
+    widget_id = callback.data.split("_")[-1]
+    await state.update_data(editing_social_widget_id=widget_id)
+    await state.set_state(ManagerFlow.editing_social_greeting)
+
+    await callback.message.answer(
+        f"💬 <b>Изменение приветствия канала #{widget_id}</b>\n\n"
+        "Введите новое приветствие на русском:\n"
+        "(AI автоматически переведёт на все языки)",
+        parse_mode='HTML'
+    )
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("editsocialname_"))
+async def edit_social_name_callback(callback: types.CallbackQuery, state: FSMContext):
+    """Start editing social widget name"""
+    if not is_manager(callback.from_user.id, callback.bot):
+        await callback.answer("❌ Недостаточно прав", show_alert=True)
+        return
+
+    widget_id = callback.data.split("_")[-1]
+    await state.update_data(editing_social_widget_id=widget_id)
+    await state.set_state(ManagerFlow.editing_social_name)
+
+    await callback.message.answer(
+        f"📛 <b>Изменение названия канала #{widget_id}</b>\n\n"
+        "Введите новое название (например: Instagram, Facebook):",
+        parse_mode='HTML'
+    )
+    await callback.answer()
+
+@router.callback_query(F.data == "back_to_channels")
+async def back_to_channels_callback(callback: types.CallbackQuery):
+    """Return to channels list"""
+    await callback.message.delete()
+    await callback.answer()
+
+@router.message(ManagerFlow.editing_social_greeting)
+async def process_social_greeting(message: types.Message, state: FSMContext):
+    """Process new social widget greeting"""
+    if not is_manager(message.from_user.id, message.bot):
+        await message.answer("❌ Недостаточно прав")
+        return
+
+    data = await state.get_data()
+    widget_id = data.get('editing_social_widget_id')
+    company_id = getattr(message.bot, 'company_id', 1)
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.patch(
+                f'{API_BASE_URL}/sales/companies/{company_id}/widgets/{widget_id}',
+                json={'greeting_message': message.text}
+            ) as resp:
+                if resp.status == 200:
+                    await message.answer(f"✅ Приветствие канала #{widget_id} обновлено!")
+                else:
+                    await message.answer(f"❌ Ошибка обновления (код {resp.status})")
+    except Exception as e:
+        logging.error(f"Update social greeting error: {e}")
+        await message.answer(f"❌ Ошибка: {str(e)[:50]}")
+
+    await state.clear()
+
+@router.message(ManagerFlow.editing_social_name)
+async def process_social_name(message: types.Message, state: FSMContext):
+    """Process new social widget name"""
+    if not is_manager(message.from_user.id, message.bot):
+        await message.answer("❌ Недостаточно прав")
+        return
+
+    data = await state.get_data()
+    widget_id = data.get('editing_social_widget_id')
+    company_id = getattr(message.bot, 'company_id', 1)
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.patch(
+                f'{API_BASE_URL}/sales/companies/{company_id}/widgets/{widget_id}',
+                json={'channel_name': message.text}
+            ) as resp:
+                if resp.status == 200:
+                    await message.answer(f"✅ Название канала изменено на: {message.text}")
+                else:
+                    await message.answer(f"❌ Ошибка обновления (код {resp.status})")
+    except Exception as e:
+        logging.error(f"Update social name error: {e}")
+        await message.answer(f"❌ Ошибка: {str(e)[:50]}")
+
+    await state.clear()

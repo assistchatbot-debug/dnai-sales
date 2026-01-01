@@ -20,6 +20,11 @@ class Company(Base):
     whatsapp = Column(String)  # WhatsApp компании
     email = Column(String)  # Email для уведомлений
     description = Column(Text)  # Краткое описание компании
+    description_en = Column(Text, nullable=True)
+    description_kz = Column(Text, nullable=True)
+    description_ky = Column(Text, nullable=True)
+    description_uz = Column(Text, nullable=True)
+    description_uk = Column(Text, nullable=True)
     logo_url = Column(String)  # URL логотипа компании
     
     # Bot configuration

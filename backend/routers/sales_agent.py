@@ -529,7 +529,14 @@ async def get_company(company_id: int, db: AsyncSession = Depends(get_db)):
         'phone': company.phone,
         'whatsapp': company.whatsapp,
         'email': company.email,
-        'description': company.description,
+        'descriptions': {
+            'ru': company.description,
+            'en': company.description_en,
+            'kz': company.description_kz,
+            'ky': company.description_ky,
+            'uz': company.description_uz,
+            'uk': company.description_uk
+        },
         'logo_url': company.logo_url
     }
 
@@ -564,6 +571,13 @@ async def upsert_company(data: dict, db: AsyncSession = Depends(get_db)):
         company.email = data['email']
     if 'description' in data:
         company.description = data['description']
+        # Auto-translate company description to other languages
+        company.description_en = await translate_greeting(data['description'], 'en')
+        company.description_kz = await translate_greeting(data['description'], 'kz')
+        company.description_ky = await translate_greeting(data['description'], 'ky')
+        company.description_uz = await translate_greeting(data['description'], 'uz')
+        company.description_uk = await translate_greeting(data['description'], 'uk')
+        logging.info(f'✅ Auto-translated company description for ID {company.id}')
     if 'logo_url' in data:
         company.logo_url = data['logo_url']
     
@@ -785,7 +799,14 @@ async def get_company_info(company_id: int, db: AsyncSession = Depends(get_db)):
     return {
         'logo_url': company.logo_url or 'https://bizdnai.com/logo.png',
         'company_name': company.name or 'BizDNAi',
-        'description': company.description
+        'descriptions': {
+            'ru': company.description,
+            'en': company.description_en,
+            'kz': company.description_kz,
+            'ky': company.description_ky,
+            'uz': company.description_uz,
+            'uk': company.description_uk
+        }
     }
 
 
@@ -1185,6 +1206,47 @@ async def delete_social_widget(
         logging.error(f'Delete widget error: {e}')
         raise HTTPException(status_code=500, detail=str(e))
 
+
+
+@router.patch("/companies/{company_id}/widgets/{widget_id:int}")
+async def update_social_widget(company_id: int, widget_id: int, data: dict, db: AsyncSession = Depends(get_db)):
+    """Update social widget (greeting, channel_name)"""
+    result = await db.execute(
+        select(SocialWidget).where(
+            SocialWidget.id == widget_id,
+            SocialWidget.company_id == company_id
+        )
+    )
+    widget = result.scalars().first()
+    
+    if not widget:
+        raise HTTPException(status_code=404, detail="Widget not found")
+    
+    # Update greeting with auto-translation
+    if 'greeting_message' in data:
+        widget.greeting_message = data['greeting_message']
+        widget.greeting_ru = data['greeting_message']
+        # Auto-translate
+        widget.greeting_en = await translate_greeting(data['greeting_message'], 'en')
+        widget.greeting_kz = await translate_greeting(data['greeting_message'], 'kz')
+        widget.greeting_ky = await translate_greeting(data['greeting_message'], 'ky')
+        widget.greeting_uz = await translate_greeting(data['greeting_message'], 'uz')
+        widget.greeting_uk = await translate_greeting(data['greeting_message'], 'uk')
+        logging.info(f'✅ Auto-translated social widget greeting #{widget_id}')
+    
+    # Update channel name
+    if 'channel_name' in data:
+        widget.channel_name = data['channel_name']
+    
+    await db.commit()
+    await db.refresh(widget)
+    
+    return {
+        'id': widget.id,
+        'channel_name': widget.channel_name,
+        'greeting_message': widget.greeting_message,
+        'status': 'updated'
+    }
 
 @router.get("/companies/{company_id}/widgets/{widget_id:int}")
 async def get_widget_by_id(company_id:int,widget_id:int,db:AsyncSession=Depends(get_db)):
