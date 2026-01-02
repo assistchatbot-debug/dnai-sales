@@ -10,6 +10,22 @@ from config import API_BASE_URL
 from states import SalesFlow, ManagerFlow
 from keyboards import get_start_keyboard
 
+def get_manager_keyboard():
+    """Manager bot main keyboard"""
+    from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📊 Статус"), KeyboardButton(text="📋 Лиды")],
+            [KeyboardButton(text="📢 Каналы"), KeyboardButton(text="🌐 Виджет")],
+            [KeyboardButton(text="💳 Тарифы")],
+            [KeyboardButton(text="📊 Лиды за неделю"), KeyboardButton(text="📅 Лиды за месяц")],
+            [KeyboardButton(text="🏠 Меню")]
+        ],
+        resize_keyboard=True
+    )
+
+
+
 router = Router()
 
 def is_manager(user_id: int, bot) -> bool:
@@ -64,9 +80,7 @@ async def process_backend_response(message: types.Message, response_text: str):
 async def cmd_start(message: types.Message, state: FSMContext):
     # Manager menu with buttons
     if is_manager(message.from_user.id,message.bot):
-        from aiogram.types import ReplyKeyboardMarkup,KeyboardButton
-        kb=ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📊 Статус"),KeyboardButton(text="📋 Лиды")],[KeyboardButton(text="📢 Каналы"),KeyboardButton(text="🌐 Виджет")],[KeyboardButton(text="💳 Тарифы"),KeyboardButton(text="📊 Лиды за неделю")],[KeyboardButton(text="🏠 Меню")]],resize_keyboard=True)
-        await message.answer("🤖 <b>Меню</b>",reply_markup=kb,parse_mode='HTML')
+        await message.answer("🤖 <b>Меню</b>", reply_markup=get_manager_keyboard(), parse_mode='HTML')
         return
     await state.set_state(SalesFlow.qualifying)
     company_id = getattr(message.bot, 'company_id', 1)
@@ -516,17 +530,7 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
         await message.answer(text, parse_mode='HTML')
     
     elif 'меню' in text_lower or 'menu' in text_lower:
-        from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-        kb = ReplyKeyboardMarkup(
-            keyboard=[
-                [KeyboardButton(text="📊 Статус"), KeyboardButton(text="📋 Лиды")],
-                [KeyboardButton(text="📢 Каналы"), KeyboardButton(text="🌐 Виджет")],
-                [KeyboardButton(text="💳 Тарифы"), KeyboardButton(text="📊 Лиды за неделю")],
-                [KeyboardButton(text="🏠 Меню")]
-            ],
-            resize_keyboard=True
-        )
-        await message.answer("🏠 <b>Главное меню</b>", reply_markup=kb, parse_mode='HTML')
+        await message.answer("🏠 <b>Главное меню</b>", reply_markup=get_manager_keyboard(), parse_mode='HTML')
     
     elif 'помощь' in text_lower or 'help' in text_lower or 'команд' in text_lower:
         await message.answer(
