@@ -7,6 +7,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+import subprocess
 
 logging.basicConfig(level=logging.INFO)
 API_BASE_URL = 'http://localhost:8005'
@@ -367,6 +368,22 @@ async def process_ai_api_key(message: types.Message, state: FSMContext):
                 if resp.status == 200:
                     result = await resp.json()
                     await message.answer(f"✅ <b>Сохранено!</b>\n\nID: {result.get('id')}\nНазвание: {result.get('name')}", parse_mode='HTML', reply_markup=get_main_keyboard())
+                    
+                    # Auto-restart Manager bot to load new company
+                    try:
+                        restart_result = subprocess.run(
+                            ['docker-compose', '-f', '/root/dnai-sales/docker-compose.yml', 'restart', 'bot'],
+                            cwd='/root/dnai-sales',
+                            capture_output=True,
+                            text=True,
+                            timeout=30
+                        )
+                        if restart_result.returncode == 0:
+                            await message.answer("🔄 Manager бот перезапущен. Компания активирована!")
+                        else:
+                            await message.answer(f"⚠️ Не удалось перезапустить Manager бот:\n{restart_result.stderr[:100]}")
+                    except Exception as restart_error:
+                        await message.answer(f"❌ Ошибка перезапуска: {str(restart_error)[:100]}")
                 else:
                     await message.answer("❌ Ошибка", reply_markup=get_main_keyboard())
         except:

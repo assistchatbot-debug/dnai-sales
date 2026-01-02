@@ -47,7 +47,7 @@ import logging
 import os
 import httpx
 import re
-from services.ai_service import ai_service
+from services.ai_service import ai_service, get_ai_service
 from services.voice_service import voice_service
 from services.telegram_service import telegram_service
 from services.email_service import email_service
@@ -286,9 +286,18 @@ async def sales_chat(request: Request, company_id: int, chat_data: ChatMessage, 
             session_id = str(new_session.id)
         
         history = await get_conversation_history(db, lead_id, limit=20)
+        logging.info(f"📚🔍 DEBUG company_id={company_id}, lead_id={lead_id}, history len={len(history)}")
+        
+        # 🏢 MULTITENANCY: Get company-specific AI service
+        result = await db.execute(select(Company).where(Company.id == company_id))
+        company = result.scalars().first()
+        if company and company.ai_endpoint and company.ai_api_key:
+            company_ai = get_ai_service(company_id, company.ai_endpoint, company.ai_api_key)
+        else:
+            company_ai = ai_service  # Fallback to default
         
         catalog = []
-        ai_response = await ai_service.get_product_recommendation(
+        ai_response = await company_ai.get_product_recommendation(
             user_query=chat_data.message,
             history=history,
             product_catalog=catalog,
@@ -1053,9 +1062,17 @@ async def process_voice(request: Request, company_id: int, file: UploadFile = Fi
     lead_id = lead.id
     
     history = await get_conversation_history(db, lead_id, limit=20)
+    # 🏢 MULTITENANCY: Get company-specific AI
+    result = await db.execute(select(Company).where(Company.id == company_id))
+    company = result.scalars().first()
+    if company and company.ai_endpoint and company.ai_api_key:
+        company_ai = get_ai_service(company_id, company.ai_endpoint, company.ai_api_key)
+    else:
+        company_ai = ai_service
+    
     catalog = []
     
-    ai_response = await ai_service.get_product_recommendation(
+    ai_response = await company_ai.get_product_recommendation(
         user_query=transcribed_text,
         history=history,
         product_catalog=catalog,

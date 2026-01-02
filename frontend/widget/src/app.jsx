@@ -17,6 +17,7 @@ export function App() {
     const [showTooltip, setShowTooltip] = useState(false);
     const [visitorId, setVisitorId] = useState(localStorage.getItem('bizdnaii_vid') || `v_${Math.random().toString(36).substr(2, 9)}`);
     const [companyLogo, setCompanyLogo] = useState('https://bizdnai.com/logo.png');
+    const [companyName, setCompanyName] = useState('BizDNAi');
     const [companyId, setCompanyId] = useState(null);
 
     const texts = {
@@ -107,7 +108,7 @@ export function App() {
     useEffect(() => { localStorage.setItem('bizdnaii_vid', visitorId); }, [visitorId]);
     
     useEffect(() => {
-        fetch('/sales/widget/config')
+        fetch('https://bizdnai.com/sales/widget/config')
             .then(r => {
                 if (!r.ok) throw new Error('Widget not found');
                 return r.json();
@@ -122,7 +123,15 @@ export function App() {
                 console.log('🔴 Status icon:', data.is_active !== false ? '● (green dot)' : '❌ (red X)');
                 
                 if (data.logo_url) {
-                    setCompanyLogo(data.logo_url);
+                    // Convert relative URL to absolute bizdnai.com URL
+                    const logoUrl = data.logo_url.startsWith('http') 
+                        ? data.logo_url 
+                        : `https://bizdnai.com${data.logo_url}`;
+                    setCompanyLogo(logoUrl);
+                }
+                
+                if (data.company_name) {
+                    setCompanyName(data.company_name);
                 }
                 
                 if (data.greetings && data.greetings[language]) {
@@ -151,7 +160,7 @@ export function App() {
         setMessages(prev => [...prev, { id: Date.now(), text: userMsg, sender: 'user' }]);
         setIsTyping(true);
         try {
-            const response = await fetch(`/sales/${companyId}/chat`, {
+            const response = await fetch(`https://bizdnai.com/sales/${companyId}/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ message: userMsg, session_id: "web-session", user_id: visitorId, language: language })
@@ -223,7 +232,7 @@ export function App() {
         formData.append('user_id', visitorId);
         formData.append('language', language);
         try {
-            const response = await fetch(`/sales/${companyId}/voice`, { method: 'POST', body: formData });
+            const response = await fetch(`https://bizdnai.com/sales/${companyId}/voice`, { method: 'POST', body: formData });
             const data = await response.json();
             if (data.text) {
                 setMessages(prev => {
@@ -243,7 +252,7 @@ export function App() {
         const newId = `v_${Math.random().toString(36).substr(2, 9)}`;
         setVisitorId(newId);
         localStorage.setItem('bizdnaii_vid', newId);
-        fetch('/sales/widget/config')
+        fetch('https://bizdnai.com/sales/widget/config')
             .then(r => r.json())
             .then(data => {
                 if (data.greetings && data.greetings[language]) {
@@ -264,7 +273,7 @@ export function App() {
                             <div className="flex items-center gap-2">
                                 <img src={companyLogo} className="w-9 h-9 rounded-full" alt="" />
                                 <div>
-                                    <h3 className="font-bold text-sm text-white">BizDNAi</h3>
+                                    <h3 className="font-bold text-sm text-white">{companyName}</h3>
                                     <span className="text-xs flex items-center gap-1">
                                         <span className={isActive ? 'text-green-300' : 'text-red-400'}>{isActive ? '●' : '❌'}</span>
                                         <span className="text-white">{isActive ? t.online : 'Offline'}</span>
@@ -282,7 +291,7 @@ export function App() {
                                 const newLang = e.target.value;
                                 setLanguage(newLang);
                                 localStorage.setItem('bizdnaii_widget_lang', newLang);
-                                fetch('/sales/widget/config')
+                                fetch('https://bizdnai.com/sales/widget/config')
                                     .then(r => r.json())
                                     .then(data => {
                                         if (data.greetings && data.greetings[newLang]) {

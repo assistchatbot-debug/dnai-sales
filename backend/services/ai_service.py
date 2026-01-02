@@ -33,12 +33,12 @@ class AIService:
         # Agent has its own flow, don't confuse it with our bot responses
         messages = []
         
-        # Add only user messages from history
+        # Add BOTH user AND assistant messages from history
         for msg in history[-20:]:
-            if msg.get("sender") == "user":
-                text = msg.get("text", "")
-                if text and text not in ['received', 'sent']:
-                    messages.append({"role": "user", "content": text})
+            text = msg.get("text", "")
+            if text and text not in ['received', 'sent']:
+                role = "user" if msg.get("sender") == "user" else "assistant"
+                messages.append({"role": role, "content": text})
         
         # Add current user message with lang parameter
         import json
@@ -52,6 +52,14 @@ class AIService:
         print(f"🔍 History: {len(history)} messages")
         print(f"🔍 Last 3: {[m.get('text','')[:40] for m in history[-3:]]}")
         print(f"🔍 Sending to AI: {msg_with_lang[:100]}")
+        
+        # DEBUG: Log FULL conversation being sent to AI
+        logging.info(f"🔍 AI Debug: Sending {len(messages)} messages to {self.agent_url[:50]}")
+        logging.info(f"📨 FULL MESSAGES TO AI:")
+        for i, msg in enumerate(messages):
+            role = msg.get('role', '?')
+            text = msg.get('content', '')[:100]  # First 100 chars
+            logging.info(f"   [{i}] {role}: {text}")
         
         try:
             response = await self.client.chat.completions.create(
@@ -93,6 +101,14 @@ class AIService:
         for msg in history[-30:]:
             role = "user" if msg.get("sender") == "user" else "assistant"
             messages.append({"role": role, "content": msg.get("text", "")})
+        
+        # DEBUG: Log FULL conversation being sent to AI
+        logging.info(f"🔍 AI Debug: Sending {len(messages)} messages to {self.agent_url[:50]}")
+        logging.info(f"📨 FULL MESSAGES TO AI:")
+        for i, msg in enumerate(messages):
+            role = msg.get('role', '?')
+            text = msg.get('content', '')[:100]  # First 100 chars
+            logging.info(f"   [{i}] {role}: {text}")
         
         try:
             response = await self.client.chat.completions.create(
