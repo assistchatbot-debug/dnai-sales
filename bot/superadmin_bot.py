@@ -49,7 +49,7 @@ class CompanyFlow(StatesGroup):
     entering_extend_days = State()
 
 def get_main_keyboard():
-    return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📊 Компании"), KeyboardButton(text="📈 Лиды")],[KeyboardButton(text="💳 Тарифы"), KeyboardButton(text="⚙️ Статус")],[KeyboardButton(text="🏠 Меню")]], resize_keyboard=True)
+    return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📊 Компании"), KeyboardButton(text="📈 Лиды")],[KeyboardButton(text="💳 Тарифы"), KeyboardButton(text="⚙️ Статус")],[KeyboardButton(text="🌐 Виджет"), KeyboardButton(text="🏠 Меню")]], resize_keyboard=True)
 
 def get_company_menu_keyboard():
     return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="➕ Создать компанию"), KeyboardButton(text="✏️ Редактировать компанию")],[KeyboardButton(text="📋 Список компаний")],[KeyboardButton(text="🎯 Установить тариф"), KeyboardButton(text="⏰ Продлить тариф")],[KeyboardButton(text="◀️ Назад")]], resize_keyboard=True)
@@ -185,6 +185,25 @@ async def proc_ai_price(message: types.Message, state: FSMContext):
         await message.answer("❌ Введите число")
         return
     await state.clear()
+
+
+@dp.message(F.text == "🌐 Виджет")
+async def btn_widget(message: types.Message, state: FSMContext):
+    """Send widget embed code"""
+    await state.clear()
+    
+    # Экранированный код для HTML
+    embed_code = '&lt;script src="https://bizdnai.com/widget-source/bizdnaii-widget.js"&gt;&lt;/script&gt;'
+    
+    text = f"""🌐 <b>Код для вставки виджета</b>
+
+Скопируйте этот код и вставьте на любую страницу сайта перед закрывающим тегом &lt;/body&gt;:
+
+<code>{embed_code}</code>
+
+✅ Виджет автоматически появится в правом нижнем углу страницы."""
+    
+    await message.answer(text, parse_mode='HTML', reply_markup=get_main_keyboard())
 
 @dp.message(F.text == "📊 Компании")
 async def btn_companies(message: types.Message, state: FSMContext):
