@@ -1412,7 +1412,7 @@ async def get_pricing_html(db: AsyncSession = Depends(get_db)):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title data-ru="Тарифы BizDNAi 2025" data-en="BizDNAi Pricing 2025">Тарифы BizDNAi 2025</title>
+    <title data-ru="Тарифы BizDNAi 2026" data-en="BizDNAi Pricing 2026">Тарифы BizDNAi 2026</title>
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{ font-family: 'Segoe UI', Tahoma, sans-serif; background: linear-gradient(135deg, #667eea, #764ba2); padding: 40px 20px; }}
@@ -1445,7 +1445,7 @@ async def get_pricing_html(db: AsyncSession = Depends(get_db)):
             <button class="lang-btn" onclick="setLang('en')">🇺🇸 EN</button>
         </div>
         
-        <h1 data-ru="💎 Тарифы BizDNAi 2025" data-en="💎 BizDNAi Pricing 2025">💎 Тарифы BizDNAi 2025</h1>
+        <h1 data-ru="💎 Тарифы BizDNAi 2026" data-en="💎 BizDNAi Pricing 2026">💎 Тарифы BizDNAi 2026</h1>
         <p style="text-align:center;color:#666;margin-bottom:40px" data-ru="Автоматизация продаж с AI-помощником" data-en="Sales automation with AI assistant">Автоматизация продаж с AI-помощником</p>
         
         <h2 data-ru="📅 Месячная подписка" data-en="📅 Monthly Subscription">📅 Месячная подписка</h2>
@@ -1532,7 +1532,7 @@ async def send_pricing_email(company_id: int, db: AsyncSession = Depends(get_db)
     html_body = f"""
     <html>
     <body style="font-family: Arial, sans-serif; padding: 20px;">
-        <h1 style="color: #667eea;">💎 Тарифы BizDNAi 2025</h1>
+        <h1 style="color: #667eea;">💎 Тарифы BizDNAi 2026</h1>
         
         <h2>📅 Месячная подписка</h2>
         <table border="1" cellpadding="10" cellspacing="0" style="border-collapse: collapse; width: 100%;">
@@ -1563,7 +1563,7 @@ async def send_pricing_email(company_id: int, db: AsyncSession = Depends(get_db)
     try:
         await email_service.send_html_email(
             to_email=company.email,
-            subject="💎 Тарифы BizDNAi 2025",
+            subject="💎 Тарифы BizDNAi 2026",
             html_body=html_body
         )
         logging.info(f"✅ Pricing email sent to {company.email}")
