@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description"
+        content="BizDNAi: AI-driven SaaS platform for business planning and management. Платформа для автоматизации управления бизнесом с ИИ.">
+    <meta name="keywords" content="AI SaaS, business planning, BizDNAi, автоматизация бизнеса, ИИ">
+    <link rel="icon" href="/favicon.png" type="image/png"><title>BizDNAi - Power Your Business with AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #1A1A1A;
+            color: #E5E7EB;
+        }
+
+        .neon-glow {
+            box-shadow: 0 0 10px #00D4FF, 0 0 20px #D81BFF;
+        }
+
+        canvas#neural-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            background: #1A1A1A;
+            opacity: 0.3;
+            pointer-events: none;
+        }
+
+        .navbar {
+            backdrop-filter: blur(10px);
+            background: rgba(26, 26, 26, 0.8);
+            z-index: 20;
+        }
+
+        .cta-button {
+            display: inline-block;
+            transition: transform 0.3s;
+            cursor: pointer;
+        }
+
+        .cta-button:hover {
+            transform: scale(1.05);
+        }
+
+        .lang-ru {
+            display: none;
+        }
+
+        .lang-en {
+            display: inline;
+        }
+
+        [data-lang="ru"] .lang-ru {
+            display: inline;
+        }
+
+        [data-lang="ru"] .lang-en {
+            display: none;
+        }
+
+        .logo {
+            transform: translateX(-10%);
+        }
+
+        section {
+            position: relative;
+            z-index: 1;
+        }
+
+        @media (max-width: 768px) {
+            .hamburger {
+                display: block;
+            }
+
+            .nav-links {
+                display: none;
+            }
+
+            .nav-links.active {
+                display: flex;
+                flex-direction: column;
+                gap: 1rem;
+                padding: 1rem 1.5rem;
+            }
+            
+            .nav-links.active li {
+                padding-left: 0 !important;
+            }
+            
+            .close-menu {
+                color: #ff4444;
+                font-size: 1.25rem;
+                font-weight: bold;
+                cursor: pointer;
+                text-align: right;
+                padding: 0.5rem 0;
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+                margin-bottom: 0.5rem;
+            }
+
+            .logo {
+                transform: translateX(0);
+            }
+
+            .footer-links {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .footer-links>div {
+                display: flex;
+                justify-content: center;
+                gap: 1rem;
+            }
+
+            .footer-links .privacy-link {
+                margin-top: 0.5rem;
+            }
+        }
+    
+        /* Custom 1200px breakpoint for mobile menu */
+        .desktop-menu-hidden { display: flex; }
+        .desktop-menu-flex { display: none; }
+        
+        @media (min-width: 1200px) {
+            .desktop-menu-hidden { display: none; }
+            .desktop-menu-flex { display: flex; }
+        }
+    </style>
+</head>
+
+<body data-lang="en">
+    <!-- Neural Network Animation -->
+    <canvas id="neural-bg"></canvas>
+
+    <!-- Navbar -->
+    <nav class="navbar fixed top-0 w-full p-4 z-10">
+        <div class="container mx-auto flex justify-between items-center">
+            <div class="flex items-center space-x-4">
+                <button id="language-toggle"
+                    class="text-lg text-white hover:text-[#00D4FF] neon-glow px-4 py-2 rounded">EN/RU</button>
+                <img src="logo.png" alt="BizDNAi Logo" width="120" height="120" class="mx-auto logo">
+            </div>
+            <div class="hamburger desktop-menu-hidden text-white cursor-pointer text-2xl">☰</div>
+            <ul class="nav-links desktop-menu-flex space-x-6 text-lg text-white">
+                <li class="close-menu desktop-menu-hidden" onclick="document.querySelector('.nav-links').classList.remove('active')">
+                    <span class="lang-en">Close ✕</span><span class="lang-ru">Закрыть ✕</span>
+                </li>
+                <li><a href="#home" class="hover:text-[#00D4FF] py-2"><span class="lang-en">Home</span><span
+                            class="lang-ru">Главная</span></a></li>
+                <li><a href="#about" class="hover:text-[#00D4FF] py-2"><span class="lang-en">About</span><span
+                            class="lang-ru">О проекте</span></a></li>
+                <li><a href="#how-it-works" class="hover:text-[#00D4FF] py-2"><span class="lang-en">How It
+                            Works</span><span class="lang-ru">Как это работает</span></a></li>
+                <li><a href="#why" class="hover:text-[#00D4FF] py-2"><span class="lang-en">Why BizDNAi</span><span
+                            class="lang-ru">Почему BizDNAi</span></a></li>
+                <li><a href="#invest" class="hover:text-[#00D4FF] py-2"><span class="lang-en">Investors</span><span
+                            class="lang-ru">Инвесторы</span></a></li>
+                <li><a href="#advise" class="hover:text-[#00D4FF] py-2"><span class="lang-en">Advisors</span><span
+                            class="lang-ru">Советники</span></a></li>
+                <li><a href="#partner" class="hover:text-[#00D4FF] py-2"><span class="lang-en">Partners</span><span
+                            class="lang-ru">Партнёры</span></a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section id="home" class="min-h-screen flex items-center justify-center relative">
+        <div class="container mx-auto text-center px-4">
+            <h1 class="text-4xl md:text-6xl font-bold text-white mb-4 animate-fade-in">
+                <span class="lang-en">BizDNAi:<br> Power Your Business with AI</span>
+                <span class="lang-ru">BizDNAi:<br> Управляйте бизнесом с ИИ</span>
+            </h1>
+            <p class="text-lg md:text-xl text-gray-300 mb-6">
+                <span class="lang-en">Transform ideas into actionable plans with our intelligent SaaS platform.</span>
+                <span class="lang-ru">Преобразуйте идеи в реальные планы с нашей интеллектуальной
+                    SaaS-платформой.</span>
+            </p>
+            <a href="https://t.me/DNAiSoft_bot" target="_blank" rel="noopener noreferrer"
+                class="cta-button bg-[#00D4FF] text-black font-semibold py-3 px-6 rounded-lg neon-glow">
+                <span class="lang-en">Test Now</span>
+                <span class="lang-ru">Протестировать</span>
+            </a>
+        </div>
+    </section>
+
+    <!-- About Section -->
+    <section id="about" class="py-16">
+        <div class="container mx-auto px-4">
+            <h2 class="text-3xl font-bold text-white mb-8 text-center">
+                <span class="lang-en">About BizDNAi</span>
+                <span class="lang-ru">О BizDNAi</span>
+            </h2>
+            <div class="flex flex-col md:flex-row items-center">
+                <div class="md:w-1/2 mb-8 md:mb-0">
+                    <p class="text-gray-300">
+                        <span class="lang-en">BizDNAi automates business planning and management using AI, structured by
+                            a 7×21 organizational framework. From startups to enterprises, scale effortlessly with
+                            intelligent insights.</span>
+                        <span class="lang-ru">BizDNAi автоматизирует планирование и управление бизнесом с помощью ИИ,
+                            структурированного по схеме 7×21. От стартапов до корпораций — масштабируйтесь с умными
+                            решениями.</span>
+                    </p>
+                    <ul class="mt-4 text-gray-300 list-disc list-inside">
+                        <li><span class="lang-en">AI-driven planning and financial modeling</span><span
+                                class="lang-ru">Планирование и финансовое моделирование с ИИ</span></li>
+                        <li><span class="lang-en">OrgBoard 7×21 for structured management</span><span
+                                class="lang-ru">Схема компании 7×21 для структурированного управления</span></li>
+                        <li><span class="lang-en">Analysis of activities and control of execution</span><span
+                                class="lang-ru">Анализ деятельности и контроль исполнения</span></li>
+                    </ul>
+                    <br>
+                    <p class="text-gray-300">
+                        <span class="lang-en">BizDNAi makes strategic management, planning, and analytics accessible to
+                            every entrepreneur, regardless of experience level.</span>
+                        <span class="lang-ru">BizDNAi делает стратегическое управление, планирование и аналитику
+                            доступными каждому предпринимателю, независимо от его уровня опыта.</span>
+                    </p>
+
+                    <br>
+                    <p class="text-gray-300">
+                        <span class="lang-en">BizDNAi improves business process transparency and helps entrepreneurs
+                            make decisions based on data, not intuition.</span>
+                        <span class="lang-ru">BizDNAi улучшает прозрачность бизнес-процессов и помогает предпринимателям
+                            принимать решения на основе данных, а не интуиции.</span>
+                    </p>
+
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- AI Sales Automation System Section -->
+    <section id="ai-sales-system" class="py-16">
+        <div class="container mx-auto px-4">
+            <h2 class="text-3xl font-bold text-white mb-8 text-center">
+                <span class="lang-en">AI Sales Automation System</span>
+                <span class="lang-ru">AI-Система Автоматизации Продаж DNAi</span>
+            </h2>
+            
+            <!-- Hero Image -->
+            <div class="flex justify-center mb-8">
+                <img src="images/ai-sales-hero.png" alt="AI Sales Assistant" class="rounded-lg neon-glow max-w-md w-full">
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="p-4 bg-gray-800 rounded-lg neon-glow">
+                    <h3 class="text-xl font-semibold text-[#00D4FF]"><span class="lang-en">Problem Solved</span><span
+                            class="lang-ru">Решаемая проблема</span></h3>
+                    <p class="text-gray-300"><span class="lang-en">• Always in a good mood<br>• Works 24/7 without breaks</span><span
+                            class="lang-ru">• Всегда хорошее настроение<br>• Работает 24/7 без выходных</span></p>
+                </div>
+                <div class="p-4 bg-gray-800 rounded-lg neon-glow">
+                    <h3 class="text-xl font-semibold text-[#00D4FF]"><span class="lang-en">AI Assistant</span><span
+                            class="lang-ru">AI ассистент</span></h3>
+                    <p class="text-gray-300"><span class="lang-en">• Never forgets anything<br>• Knows all technical details</span><span
+                            class="lang-ru">• Ничего не забывает<br>• Знает все технические детали</span></p>
+                </div>
+                <div class="p-4 bg-gray-800 rounded-lg neon-glow">
+                    <h3 class="text-xl font-semibold text-[#00D4FF]"><span class="lang-en">AI Salesperson Results</span><span
+                            class="lang-ru">Результат AI продавца</span></h3>
+                    <p class="text-gray-300"><span class="lang-en">• Reduces human workload<br>• Revenue increase up to 68%</span><span
+                            class="lang-ru">• Снимает нагрузку с человека<br>• Повышение дохода до 68%</span></p>
+                </div>
+            </div>
+        </div>
+    </section>    <!-- AI Recruiter Section -->
+    <section id="ai-recruiter" class="py-16 bg-gray-900">
+        <div class="container mx-auto px-4">
+            <h2 class="text-3xl font-bold text-white mb-8 text-center">
+                <span class="lang-en">AI Recruiter</span>
+                <span class="lang-ru">AI Рекрутер</span>
+            </h2>
+            
+            <!-- Hero Image -->
+            <div class="flex justify-center mb-8">
+                <img src="images/ai-recruiter-hero.png" alt="AI Recruiter" class="rounded-lg neon-glow max-w-md w-full">
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="p-4 bg-gray-800 rounded-lg neon-glow">
+                    <h3 class="text-xl font-semibold text-[#00D4FF]"><span class="lang-en">Problem Solved</span><span
+                            class="lang-ru">Решаемая проблема</span></h3>
+                    <p class="text-gray-300"><span class="lang-en">• Difficulty analyzing resumes<br>• Works 24/7 without breaks</span><span
+                            class="lang-ru">• Сложность анализа резюме<br>• Работает 24/7 без выходных</span></p>
+                </div>
+                <div class="p-4 bg-gray-800 rounded-lg neon-glow">
+                    <h3 class="text-xl font-semibold text-[#00D4FF]"><span class="lang-en">AI Recruiter</span><span
+                            class="lang-ru">AI Рекрутер</span></h3>
+                    <p class="text-gray-300"><span class="lang-en">• Performs routine tasks<br>• Tests candidates</span><span
+                            class="lang-ru">• Выполняет рутинные задачи<br>• Выполняет тестирование кандидатов</span></p>
+                </div>
+                <div class="p-4 bg-gray-800 rounded-lg neon-glow">
+                    <h3 class="text-xl font-semibold text-[#00D4FF]"><span class="lang-en">AI Recruiter Results</span><span
+                            class="lang-ru">Результат AI Рекрутера</span></h3>
+                    <p class="text-gray-300"><span class="lang-en">• Reduces human workload<br>• Hiring cost reduction up to 64%</span><span
+                            class="lang-ru">• Снимает нагрузку с человека<br>• Снижение расходов на найм до 64%</span></p>
+                </div>
+            </div>
+        </div>
+    </section>    <!-- AI Mentor Section -->
+    <section id="ai-mentor" class="py-16">
+        <div class="container mx-auto px-4">
+            <h2 class="text-3xl font-bold text-white mb-8 text-center">
+                <span class="lang-en">AI Mentor</span>
+                <span class="lang-ru">AI Наставник</span>
+            </h2>
+            
+            <!-- Hero Image -->
+            <div class="flex justify-center mb-8">
+                <img src="images/ai-mentor-hero.png" alt="AI Mentor" class="rounded-lg neon-glow max-w-md w-full">
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="p-4 bg-gray-800 rounded-lg neon-glow">
+                    <h3 class="text-xl font-semibold text-[#00D4FF]"><span class="lang-en">Problem Solved</span><span
+                            class="lang-ru">Решаемая проблема</span></h3>
+                    <p class="text-gray-300"><span class="lang-en">• Long employee adaptation<br>• Distraction of experienced workers</span><span
+                            class="lang-ru">• Длительная адаптация сотрудника<br>• Отвлечение опытных работников</span></p>
+                </div>
+                <div class="p-4 bg-gray-800 rounded-lg neon-glow">
+                    <h3 class="text-xl font-semibold text-[#00D4FF]"><span class="lang-en">AI Mentor</span><span
+                            class="lang-ru">AI Наставник</span></h3>
+                    <p class="text-gray-300"><span class="lang-en">• Effective Knowledge Base<br>• Provides visual training</span><span
+                            class="lang-ru">• Владеет эффективной Базой Знаний<br>• Проводит наглядное обучение</span></p>
+                </div>
+                <div class="p-4 bg-gray-800 rounded-lg neon-glow">
+                    <h3 class="text-xl font-semibold text-[#00D4FF]"><span class="lang-en">AI Mentor Results</span><span
+                            class="lang-ru">Результат AI Наставника</span></h3>
+                    <p class="text-gray-300"><span class="lang-en">• Onboarding reduced by 3-5 times<br>• Training cost reduction up to 72%</span><span
+                            class="lang-ru">• Онбординг сокращается в 3-5 раз<br>• Снижение расходов на обучение до 72%</span></p>
+                </div>
+            </div>
+        </div>
+    </section>    <!-- AI Partner Section -->
+    <section id="ai-partner" class="py-16 bg-gray-900">
+        <div class="container mx-auto px-4">
+            <h2 class="text-3xl font-bold text-white mb-8 text-center">
+                <span class="lang-en">AI Partner</span>
+                <span class="lang-ru">AI Партнер</span>
+            </h2>
+            
+            <!-- Hero Image -->
+            <div class="flex justify-center mb-8">
+                <img src="images/ai-partner-hero.png" alt="AI Partner" class="rounded-lg neon-glow max-w-md w-full">
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="p-4 bg-gray-800 rounded-lg neon-glow">
+                    <h3 class="text-xl font-semibold text-[#00D4FF]"><span class="lang-en">Problem Solved</span><span
+                            class="lang-ru">Решаемая проблема</span></h3>
+                    <p class="text-gray-300"><span class="lang-en">• Decision-making based on intuition<br>• Lack of clear metrics</span><span
+                            class="lang-ru">• Принятие решений на интуиции<br>• Отсутствие четких показателей</span></p>
+                </div>
+                <div class="p-4 bg-gray-800 rounded-lg neon-glow">
+                    <h3 class="text-xl font-semibold text-[#00D4FF]"><span class="lang-en">AI Partner</span><span
+                            class="lang-ru">AI Партнер</span></h3>
+                    <p class="text-gray-300"><span class="lang-en">• Complete business overview<br>• Collects all metrics</span><span
+                            class="lang-ru">• Владеет полной картиной бизнеса<br>• Собирает все показатели</span></p>
+                </div>
+                <div class="p-4 bg-gray-800 rounded-lg neon-glow">
+                    <h3 class="text-xl font-semibold text-[#00D4FF]"><span class="lang-en">AI Partner Results</span><span
+                            class="lang-ru">Результат AI Партнера</span></h3>
+                    <p class="text-gray-300"><span class="lang-en">• Always has up-to-date information<br>• Provides clear recommendations</span><span
+                            class="lang-ru">• Всегда владеет актуальной информацией<br>• Дает четкие рекомендации</span></p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+
+
+    <!-- How It Works Section -->
+    <section id="how-it-works" class="py-16 bg-gray-900">
+        <div class="container mx-auto px-4">
+            <h2 class="text-3xl font-bold text-white mb-8 text-center">
+                <span class="lang-en">How It Works</span>
+                <span class="lang-ru">Как это работает</span>
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="p-4 bg-gray-800 rounded-lg neon-glow">
+                    <h3 class="text-xl font-semibold text-[#00D4FF]"><span class="lang-en">Input Idea</span><span
+                            class="lang-ru">Введите идею</span></h3>
+                    <p class="text-gray-300"><span class="lang-en">Enter your business idea (e.g., "Open a furniture
+                            workshop").</span><span class="lang-ru">Введите бизнес-идею (например, "Открыть мебельный
+                            цех").</span></p>
+                </div>
+                <div class="p-4 bg-gray-800 rounded-lg neon-glow">
+                    <h3 class="text-xl font-semibold text-[#00D4FF]"><span class="lang-en">AI Decomposition</span><span
+                            class="lang-ru">ИИ-декомпозиция</span></h3>
+                    <p class="text-gray-300"><span class="lang-en">AI breaks it into goals, tasks, and plans using the
+                            7×21 framework.</span><span class="lang-ru">ИИ разбивает её на цели, задачи и планы по схеме
+                            7×21.</span></p>
+                </div>
+                <div class="p-4 bg-gray-800 rounded-lg neon-glow">
+                    <h3 class="text-xl font-semibold text-[#00D4FF]"><span class="lang-en">Generate Plan</span><span
+                            class="lang-ru">Сгенерировать план</span></h3>
+                    <p class="text-gray-300"><span class="lang-en">Get detailed plans with financials and market
+                            analysis in Excel.</span><span class="lang-ru">Получите планы с финансами и анализом рынка в
+                            Excel.</span></p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Why BizDNAi Section -->
+    <section id="why" class="py-16">
+        <div class="container mx-auto px-4">
+            <h2 class="text-3xl font-bold text-white mb-8 text-center">
+                <span class="lang-en">Why Choose BizDNAi</span>
+                <span class="lang-ru">Почему выбрать BizDNAi</span>
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="p-4 bg-gray-800 rounded-lg neon-glow text-center">
+                    <p class="text-2xl font-bold text-[#D81BFF]"><span class="lang-en">Efficiency</span><span
+                            class="lang-ru">Эффективность</span></p>
+                    <p class="text-gray-300"><span class="lang-en">Planning, analysis, control with an AI
+                            assistant</span><span class="lang-ru">Планирование, анализ, контроль с ИИ помощником</span>
+                    </p>
+                </div>
+                <div class="p-4 bg-gray-800 rounded-lg neon-glow text-center">
+                    <p class="text-2xl font-bold text-[#D81BFF]"><span class="lang-en">Relevance</span><span
+                            class="lang-ru">Актуальность</span></p>
+                    <p class="text-gray-300"><span class="lang-en">Make decisions based on up-to-date data</span><span
+                            class="lang-ru">Принимайте решения на актуальных данных</span></p>
+                </div>
+                <div class="p-4 bg-gray-800 rounded-lg neon-glow text-center">
+                    <p class="text-2xl font-bold text-[#D81BFF]"><span class="lang-en">Control</span><span
+                            class="lang-ru">Контроль</span></p>
+                    <p class="text-gray-300"><span class="lang-en">The system reminds you about meetings, tasks,
+                            deadlines</span><span class="lang-ru">Система напоминает вам о встречах, задачах,
+                            дедлайнах</span></p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Investor Benefits Section -->
+    <section id="invest" class="py-16 bg-gray-900">
+        <div class="container mx-auto px-4 text-center">
+            <h2 class="text-3xl font-bold text-white mb-8">
+                <span class="lang-en">Why Invest in BizDNAi</span>
+                <span class="lang-ru">Почему инвестировать в BizDNAi</span>
+            </h2>
+            <p class="text-gray-300 mb-6">
+                <span class="lang-en">Back a potential unicorn in the AI SaaS market with massive growth
+                    potential.</span>
+                <span class="lang-ru">Поддержите потенциального единорога на рынке AI SaaS с огромным потенциалом
+                    роста.</span>
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="p-4 bg-gray-800 rounded-lg neon-glow">
+                    <p class="text-xl font-semibold text-[#00D4FF]"><span class="lang-en">$1.65M MRR</span><span
+                            class="lang-ru">$1.65 млн MRR</span></p>
+                    <p class="text-gray-300"><span class="lang-en">Projected by Q2 2026</span><span
+                            class="lang-ru">Прогноз к Q2 2026</span></p>
+                </div>
+                <div class="p-4 bg-gray-800 rounded-lg neon-glow">
+                    <p class="text-xl font-semibold text-[#00D4FF]"><span class="lang-en">7,5 billion TAM</span><span
+                            class="lang-ru">7,5 мрд TAM</span></p>
+                    <p class="text-gray-300"><span class="lang-en">Global market opportunity</span><span
+                            class="lang-ru">Глобальный рынок</span></p>
+                </div>
+                <div class="p-4 bg-gray-800 rounded-lg neon-glow">
+                    <p class="text-xl font-semibold text-[#00D4FF]"><span class="lang-en">AI SaaS Trend</span><span
+                            class="lang-ru">Тренд AI SaaS</span></p>
+                    <p class="text-gray-300"><span class="lang-en">Fast-growing industry</span><span
+                            class="lang-ru">Быстрорастущая отрасль</span></p>
+                </div>
+            </div>
+            <a href="https://wa.me/+77073333481" target="_blank" rel="noopener noreferrer"
+                class="cta-button bg-[#D81BFF] text-black font-semibold py-3 px-6 rounded-lg neon-glow mt-6">
+                <span class="lang-en">Become an Investor</span>
+                <span class="lang-ru">Стать инвестором</span>
+            </a>
+        </div>
+    </section>
+
+    <!-- Advisor Benefits Section -->
+    <section id="advise" class="py-16">
+        <div class="container mx-auto px-4 text-center">
+            <h2 class="text-3xl font-bold text-white mb-8">
+                <span class="lang-en">Why Become an Advisor</span>
+                <span class="lang-ru">Почему стать советником</span>
+            </h2>
+            <p class="text-gray-300 mb-6">
+                <span class="lang-en">Shape the future of AI-driven business tools and gain equity potential.</span>
+                <span class="lang-ru">Формируйте будущее ИИ-инструментов для бизнеса с потенциалом долевого
+                    участия.</span>
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="p-4 bg-gray-800 rounded-lg neon-glow">
+                    <p class="text-xl font-semibold text-[#00D4FF]"><span class="lang-en">Global Impact</span><span
+                            class="lang-ru">Глобальное влияние</span></p>
+                    <p class="text-gray-300"><span class="lang-en">Share your knowledge with millions of
+                            businesspeople</span><span class="lang-ru">Передавайте ваши знания миллионам
+                            бизнесменов</span></p>
+                </div>
+                <div class="p-4 bg-gray-800 rounded-lg neon-glow">
+                    <p class="text-xl font-semibold text-[#00D4FF]"><span class="lang-en">Equity Potential</span><span
+                            class="lang-ru">Долевое участие</span></p>
+                    <p class="text-gray-300"><span class="lang-en">Share in a high-growth startup</span><span
+                            class="lang-ru">Доля в быстрорастущем стартапе</span></p>
+                </div>
+                <div class="p-4 bg-gray-800 rounded-lg neon-glow">
+                    <p class="text-xl font-semibold text-[#00D4FF]"><span class="lang-en">Shape Innovation</span><span
+                            class="lang-ru">Формируйте инновации</span></p>
+                    <p class="text-gray-300"><span class="lang-en">Direct advanced AI solutions in the right
+                            direction</span><span class="lang-ru">Направляйте передовые ИИ-решения в нужное русло</span>
+                    </p>
+                </div>
+            </div>
+            <a href="https://wa.me/+77073333481" target="_blank" rel="noopener noreferrer"
+                class="cta-button bg-[#D81BFF] text-black font-semibold py-3 px-6 rounded-lg neon-glow mt-6">
+                <span class="lang-en">Become an Advisor</span>
+                <span class="lang-ru">Стать советником</span>
+            </a>
+        </div>
+    </section>
+
+    <!-- Partner Benefits Section -->
+    <section id="partner" class="py-16 bg-gray-900">
+        <div class="container mx-auto px-4 text-center">
+            <h2 class="text-3xl font-bold text-white mb-8">
+                <span class="lang-en">Why Partner with BizDNAi</span>
+                <span class="lang-ru">Почему стать партнёром BizDNAi</span>
+            </h2>
+            <p class="text-gray-300 mb-6">
+                <span class="lang-en">Integrate with a high-growth SaaS and access enterprise clients.</span>
+                <span class="lang-ru">Интегрируйтесь с быстрорастущим SaaS и получайте доступ к корпоративным
+                    клиентам.</span>
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="p-4 bg-gray-800 rounded-lg neon-glow">
+                    <p class="text-xl font-semibold text-[#00D4FF]"><span class="lang-en">Integration</span><span
+                            class="lang-ru">Интеграция</span></p>
+                    <p class="text-gray-300"><span class="lang-en">Seamless API for B2B solutions</span><span
+                            class="lang-ru">Простое API для B2B-решений</span></p>
+                </div>
+                <div class="p-4 bg-gray-800 rounded-lg neon-glow">
+                    <p class="text-xl font-semibold text-[#00D4FF]"><span class="lang-en">Co-Marketing</span><span
+                            class="lang-ru">Совместный маркетинг</span></p>
+                    <p class="text-gray-300"><span class="lang-en">Joint campaigns to increase influence</span><span
+                            class="lang-ru">Совместные кампании для повышения влияния</span></p>
+                </div>
+                <div class="p-4 bg-gray-800 rounded-lg neon-glow">
+                    <p class="text-xl font-semibold text-[#00D4FF]"><span class="lang-en">Синергия</span><span
+                            class="lang-ru">Синергия</span></p>
+                    <p class="text-gray-300"><span class="lang-en">Increased efficiency through synergy</span><span
+                            class="lang-ru">Увеличение эффективности за счет синергии</span></p>
+                </div>
+            </div>
+            <a href="https://wa.me/+77073333481" target="_blank" rel="noopener noreferrer"
+                class="cta-button bg-[#D81BFF] text-black font-semibold py-3 px-6 rounded-lg neon-glow mt-6">
+                <span class="lang-en">Become a Partner</span>
+                <span class="lang-ru">Стать партнёром</span>
+            </a>
+        </div>
+    </section>
+
+    <!-- Team Section -->
+    <section id="team" class="py-16">
+        <div class="container mx-auto px-4 text-center">
+            <h2 class="text-3xl font-bold text-white mb-12">
+                <span class="lang-en">Our Team</span>
+                <span class="lang-ru">Наша команда</span>
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+                <!-- Rashid Kabzhanov -->
+                <div class="team-card p-6 bg-gray-800 rounded-lg neon-glow">
+                    <a href="https://www.linkedin.com/in/rashid-kabzhanov/" target="_blank" rel="noopener noreferrer">
+                        <img src="images/rashid.jpg" alt="Rashid Kabzhanov" class="w-32 h-32 rounded-full mx-auto mb-4 object-cover border-2 border-[#00D4FF]">
+                    </a>
+                    <h3 class="text-xl font-semibold text-[#00D4FF]">Rashid Kabzhanov</h3>
+                    <p class="text-gray-300 mt-2">
+                        <span class="lang-en">CEO & Founder, CTO<br>30+ years in business, IT since 1992<br>AI/ML expert, Astana HUB Academy</span>
+                        <span class="lang-ru">CEO & Основатель, CTO<br>30+ лет в бизнесе, IT c 1992<br>Эксперт AI/ML, Astana HUB Academy</span>
+                    </p>
+                    <a href="https://www.linkedin.com/in/rashid-kabzhanov/" target="_blank" rel="noopener noreferrer" class="text-[#00D4FF] hover:text-[#D81BFF] text-sm mt-2 inline-block">LinkedIn</a>
+                </div>
+                
+                <!-- Andrey Sizov -->
+                <div class="team-card p-6 bg-gray-800 rounded-lg neon-glow">
+                    <a href="https://www.linkedin.com/in/%D0%B0%D0%BD%D0%B4%D1%80%D0%B5%D0%B9-%D1%81%D0%B8%D0%B7%D0%BE%D0%B2-100586a8/" target="_blank" rel="noopener noreferrer">
+                        <img src="images/andrey.jpg" alt="Andrey Sizov" class="w-32 h-32 rounded-full mx-auto mb-4 object-cover border-2 border-[#00D4FF]">
+                    </a>
+                    <h3 class="text-xl font-semibold text-[#00D4FF]">Andrey Sizov</h3>
+                    <p class="text-[#D81BFF] text-sm font-semibold">
+                        <span class="lang-en">Advisor</span>
+                        <span class="lang-ru">Адвизор</span>
+                    </p>
+                    <p class="text-gray-300 mt-2">
+                        <span class="lang-en">Business Strategy<br>International Business Trainer</span>
+                        <span class="lang-ru">Бизнес-стратегия<br>Международный бизнес-тренер</span>
+                    </p>
+                    <a href="https://www.linkedin.com/in/%D0%B0%D0%BD%D0%B4%D1%80%D0%B5%D0%B9-%D1%81%D0%B8%D0%B7%D0%BE%D0%B2-100586a8/" target="_blank" rel="noopener noreferrer" class="text-[#00D4FF] hover:text-[#D81BFF] text-sm mt-2 inline-block">LinkedIn</a>
+                </div>
+                
+                <!-- Zhan Nurgaliyev -->
+                <div class="team-card p-6 bg-gray-800 rounded-lg neon-glow">
+                    <div class="w-32 h-32 rounded-full mx-auto mb-4 bg-gray-700 flex items-center justify-center border-2 border-[#00D4FF]">
+                        <span class="text-4xl text-[#00D4FF]">ZN</span>
+                    </div>
+                    <h3 class="text-xl font-semibold text-[#00D4FF]">
+                        <span class="lang-en">Zhan Nurgaliyev</span>
+                        <span class="lang-ru">Жан Нургалиев</span>
+                    </h3>
+                    <p class="text-[#D81BFF] text-sm font-semibold">
+                        <span class="lang-en">Advisor</span>
+                        <span class="lang-ru">Адвизор</span>
+                    </p>
+                    <p class="text-gray-300 mt-2">
+                        <span class="lang-en">IT Technologies<br>CEO of ASU LLC</span>
+                        <span class="lang-ru">IT технологии<br>CEO ТОО АСУ</span>
+                    </p>
+                    <a href="https://www.linkedin.com/in/%D0%B6%D0%B0%D0%BD-%D0%BD%D1%83%D1%80%D0%B3%D0%B0%D0%BB%D0%B8%D0%B5%D0%B2-881a2235b/" target="_blank" rel="noopener noreferrer" class="text-[#00D4FF] hover:text-[#D81BFF] text-sm mt-2 inline-block">LinkedIn</a>
+                </div>
+                
+                <!-- Jim Mathers -->
+                <div class="team-card p-6 bg-gray-800 rounded-lg neon-glow">
+                    <div class="w-32 h-32 rounded-full mx-auto mb-4 bg-gray-700 flex items-center justify-center border-2 border-[#00D4FF]">
+                        <span class="text-4xl text-[#00D4FF]">JM</span>
+                    </div>
+                    <h3 class="text-xl font-semibold text-[#00D4FF]">Jim Mathers</h3>
+                    <p class="text-[#D81BFF] text-sm font-semibold">
+                        <span class="lang-en">Advisor</span>
+                        <span class="lang-ru">Адвизор</span>
+                    </p>
+                    <p class="text-gray-300 mt-2">
+                        <span class="lang-en">Business Strategy<br>Owner & CEO of Energy Professionals</span>
+                        <span class="lang-ru">Бизнес-стратегия<br>Владелец и CEO Energy Professionals</span>
+                    </p>
+                    <a href="https://www.linkedin.com/in/jim-mathers-9051271/" target="_blank" rel="noopener noreferrer" class="text-[#00D4FF] hover:text-[#D81BFF] text-sm mt-2 inline-block">LinkedIn</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+
+    <!-- Get Started Section -->
+    <section id="get-started" class="py-16">
+        <div class="container mx-auto px-4 text-center">
+            <h2 class="text-3xl font-bold text-white mb-8">
+                <span class="lang-en">Get Started with BizDNAi</span>
+                <span class="lang-ru">Начните с BizDNAi</span>
+            </h2>
+            <p class="text-gray-300 mb-6">
+                <span class="lang-en">Start planning your business now with our Telegram bot. Trusted by 100+ beta
+                    users.</span>
+                <span class="lang-ru">Начните планировать бизнес с нашим Telegram-ботом. Доверяют 100+
+                    бета-пользователей.</span>
+            </p>
+            <a href="https://t.me/DNAiSoft_bot" target="_blank" rel="noopener noreferrer"
+                class="cta-button bg-[#00D4FF] text-black font-semibold py-3 px-6 rounded-lg neon-glow">
+                <span class="lang-en">Test Now</span>
+                <span class="lang-ru">Протестировать</span>
+            </a>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="py-8 bg-gray-900 text-center">
+        <p class="text-gray-300"><span class="lang-en">© 2025 BizDNAi. All rights reserved.</span><span
+                class="lang-ru">© 2025 BizDNAi. Все права защищены.</span></p>
+        <p class="text-gray-300 mt-2">Created by Rashid Kabzhanov</p>
+        <div class="footer-links flex justify-center space-x-4 mt-4">
+            <div>
+                <a href="https://t.me/KabzhanovR" target="_blank" rel="noopener noreferrer"
+                    class="text-[#00D4FF] hover:text-[#D81BFF]"><span class="lang-en">Telegram * </span><span
+                        class="lang-ru">Telegram * </span></a>
+                <a href="https://github.com/assistchatbot-debug/dnai-sales" target="_blank" rel="noopener noreferrer"
+                    class="text-[#00D4FF] hover:text-[#D81BFF]"><span class="lang-en">GitHub * </span><span
+                        class="lang-ru">GitHub * </span></a>
+                <a href="mailto:ceo@bizdnai.com" class="text-[#00D4FF] hover:text-[#D81BFF]"><span class="lang-en">Email
+                        * </span><span class="lang-ru">Email * </span></a>
+                <a href="http://www.youtube.com/@BizDNAi_Soft" target="_blank" rel="noopener noreferrer"
+                    class="text-[#00D4FF] hover:text-[#D81BFF]"><span class="lang-en">YouTube * </span><span
+                        class="lang-ru">YouTube * </span></a>
+            </div>
+            <div class="privacy-link">
+                <a href="privacy-policy.pdf" target="_blank" rel="noopener noreferrer"
+                    class="text-[#00D4FF] hover:text-[#D81BFF]"><span class="lang-en">Privacy Policy</span><span
+                        class="lang-ru">Политика конфиденциальности</span></a>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Language Toggle with Widget Sync
+        const langToggle = document.getElementById('language-toggle');
+
+        // Initialize from localStorage or default to 'en'
+        const savedLang = localStorage.getItem('bizdnaii_site_lang') || 'en';
+        document.body.setAttribute('data-lang', savedLang);
+        langToggle.textContent = savedLang.toUpperCase();
+
+        // Save for widget
+        localStorage.setItem('bizdnaii_widget_lang', savedLang);
+
+        langToggle.addEventListener('click', () => {
+            const currentLang = document.body.getAttribute('data-lang');
+            const newLang = currentLang === 'en' ? 'ru' : 'en';
+            document.body.setAttribute('data-lang', newLang);
+            langToggle.textContent = newLang.toUpperCase();
+
+            // Save selected language
+            localStorage.setItem('bizdnaii_site_lang', newLang);
+            localStorage.setItem('bizdnaii_widget_lang', newLang);
+
+            // Notify widget about language change
+            window.dispatchEvent(new CustomEvent('bizdnaii-language-change', {
+                detail: { language: newLang }
+            }));
+        });
+
+        // Hamburger Menu Toggle
+        document.querySelector(".hamburger").addEventListener("click", () => {
+            document.querySelector(".nav-links").classList.toggle("active");
+        });
+
+        // Close mobile menu when clicking on nav links
+        document.querySelectorAll(".nav-links a").forEach(link => {
+            link.addEventListener("click", () => {
+                document.querySelector(".nav-links").classList.remove("active");
+            });
+        });
+
+        // Smooth Scroll for Anchor Links
+
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                document.querySelector(this.getAttribute('href')).scrollIntoView({ behavior: 'smooth' });
+            });
+        });
+
+        // Canvas Neural Network Animation
+        const c = document.getElementById('neural-bg');
+        const ctx = c.getContext('2d');
+        let w, h, lines = [];
+        function resize() {
+            w = c.width = window.innerWidth;
+            h = c.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+        function initLines() {
+            lines = [];
+            for (let i = 0; i < 55; i++) {
+                lines.push({
+                    x: Math.random() * w,
+                    y: Math.random() * h,
+                    dx: (Math.random() - 0.5) * 0.6,
+                    dy: (Math.random() - 0.5) * 0.6
+                });
+            }
+        }
+        initLines();
+        function draw() {
+            ctx.clearRect(0, 0, w, h);
+            for (let i = 0; i < lines.length; i++) {
+                let a = lines[i];
+                a.x += a.dx;
+                a.y += a.dy;
+                if (a.x < 0 || a.x > w) a.dx *= -1;
+                if (a.y < 0 || a.y > h) a.dy *= -1;
+                ctx.beginPath();
+                ctx.arc(a.x, a.y, 1.2, 0, Math.PI * 2);
+                ctx.fillStyle = "#00D4FF";
+                ctx.fill();
+                for (let j = i + 1; j < lines.length; j++) {
+                    let b = lines[j], dx = a.x - b.x, dy = a.y - b.y, dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 120) {
+                        ctx.beginPath();
+                        ctx.moveTo(a.x, a.y);
+                        ctx.lineTo(b.x, b.y);
+                        ctx.strokeStyle = `rgba(0,255,255,${(1 - dist / 120) * 0.3})`;
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+                }
+            }
+            requestAnimationFrame(draw);
+        }
+        draw();
+    </script>
+    <!-- BizDNAii Widget Embed Code -->
+    <div id="bizdnaii-widget-container"></div>
+    <script src="https://bizdnai.com/widget-source/bizdnaii-widget.js?v=1767003270"></script>
+    <script>
+        window.bizdnaii_visitor = {
+            user_id: "user_123",
+            name: "John Doe"
+        };
+    </script>
+</body>
+
+</html>
