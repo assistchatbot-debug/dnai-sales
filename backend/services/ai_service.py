@@ -47,10 +47,8 @@ class AIService:
         
         # Add current user message with lang parameter
         import json
-        # Map language codes (kz -> kk for Kazakh)
-        lang_map = {'kz': 'kk', 'ky': 'ky', 'uz': 'uz', 'uk': 'uk', 'en': 'en', 'ru': 'ru'}
-        mapped_lang = lang_map.get(language, 'ru')
-        msg_with_lang = json.dumps({"message": user_query, "lang": mapped_lang}, ensure_ascii=False)
+        # Язык передаём как есть (маппинг kz->kk только для Whisper в voice_service)
+        msg_with_lang = json.dumps({"message": user_query, "lang": language}, ensure_ascii=False)
         messages.append({"role": "user", "content": msg_with_lang})
         
         # Debug logging
