@@ -1,7 +1,12 @@
 import logging
 from typing import List, Dict, Any
 import os
+import aiohttp
 from openai import AsyncOpenAI
+
+# OpenRouter для анализа (не Flowise)
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_MODEL = "openai/gpt-oss-120b:exacto" 
 
 class AIService:
     def __init__(self, company_id: int = None, ai_endpoint: str = None, ai_api_key: str = None):
@@ -80,14 +85,20 @@ class AIService:
             print(f"❌ AI Error: {e}")
             return "Какую сферу хотели бы автоматизировать?"
 
-    async def generate_conversation_summary(self, history: List[Dict[str, str]], language: str = "ru") -> str:
-        if not self.client or not history:
+    async def generate_conversation_summary(self, history: List[Dict[str, str]], language: str = "ru", manager_language: str = "ru") -> str:
+        """Generate summary using OpenRouter API (not Flowise agent)"""
+        if not history:
             return "Нет данных для анализа"
         
-        print(f"📊 Generating summary for {len(history)} messages")
+        print(f"📊 Generating summary for {len(history)} messages via OpenRouter")
+        
+        # Язык отчёта
+        lang_names = {'ru': 'русском', 'en': 'английском', 'kz': 'казахском', 'ky': 'кыргызском', 'uz': 'узбекском', 'uk': 'украинском'}
+        lang_text = lang_names.get(manager_language, 'русском')
         
         # Build prompt for summary
-        summary_prompt = """Проанализируй диалог с клиентом и создай детальный отчёт для менеджера.
+        summary_prompt = f"""Проанализируй диалог с клиентом и создай детальный отчёт для менеджера.
+ВАЖНО: Отчёт должен быть СТРОГО на {lang_text} языке!
 
 ## КРИТЕРИИ ОПРЕДЕЛЕНИЯ ГОТОВНОСТИ ЛИДА:
 
@@ -136,34 +147,49 @@ class AIService:
 
 Объём: 150-250 слов. Пиши по делу, без воды."""
 
-        messages = [{"role": "system", "content": summary_prompt}]
-        
+        # Формируем историю диалога
+        dialog_text = ""
         for msg in history[-30:]:
-            role = "user" if msg.get("sender") == "user" else "assistant"
-            messages.append({"role": role, "content": msg.get("text", "")})
+            role = "Клиент" if msg.get("sender") == "user" else "Бот"
+            dialog_text += f"{role}: {msg.get('text', '')}\n"
         
-        # DEBUG: Log FULL conversation being sent to AI
-        logging.info(f"🔍 AI Debug: Sending {len(messages)} messages to {self.agent_url[:50]}")
-        logging.info(f"📨 FULL MESSAGES TO AI:")
-        for i, msg in enumerate(messages):
-            role = msg.get('role', '?')
-            text = msg.get('content', '')[:100]  # First 100 chars
-            logging.info(f"   [{i}] {role}: {text}")
+        messages = [
+            {"role": "system", "content": summary_prompt},
+            {"role": "user", "content": f"Вот диалог для анализа:\n\n{dialog_text}"}
+        ]
+        
+        logging.info(f"🔍 OpenRouter: Sending summary request, lang={manager_language}")
+        
+        # Используем OpenRouter напрямую через aiohttp
+        if not OPENROUTER_API_KEY:
+            logging.error("❌ OPENROUTER_API_KEY not set!")
+            return "Ошибка: OpenRouter API не настроен"
         
         try:
-            response = await self.client.chat.completions.create(
-                model="n/a",
-                messages=messages,
-                extra_body={"include_retrieval_info": False}
-            )
-            
-            if not response.choices or not response.choices[0].message:
-                return "Ошибка: пустой ответ AI"
-            
-            summary = response.choices[0].message.content
-            print(f"✅ Summary: {len(summary) if summary else 0} chars")
-            return summary.strip() if summary else "Нет данных"
-            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": OPENROUTER_MODEL,
+                        "messages": messages,
+                        "max_tokens": 1000
+                    },
+                    timeout=aiohttp.ClientTimeout(total=30)
+                ) as resp:
+                    if resp.status != 200:
+                        error_text = await resp.text()
+                        logging.error(f"❌ OpenRouter error: {resp.status} - {error_text[:200]}")
+                        return f"Ошибка API: {resp.status}"
+                    
+                    data = await resp.json()
+                    summary = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    print(f"✅ Summary via OpenRouter: {len(summary) if summary else 0} chars")
+                    return summary.strip() if summary else "Нет данных"
+                    
         except Exception as e:
             print(f"❌ Summary Error: {e}")
             return f"Ошибка генерации: {str(e)}"

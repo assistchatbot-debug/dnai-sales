@@ -17,7 +17,7 @@ def get_manager_keyboard():
         keyboard=[
             [KeyboardButton(text="📊 Статус"), KeyboardButton(text="📋 Лиды")],
             [KeyboardButton(text="📢 Каналы"), KeyboardButton(text="🌐 Виджет")],
-            [KeyboardButton(text="💳 Тарифы")],
+            [KeyboardButton(text="💳 Тарифы"), KeyboardButton(text="🌍 Язык")],
             [KeyboardButton(text="📊 Лиды за неделю"), KeyboardButton(text="📅 Лиды за месяц")],
             [KeyboardButton(text="🏠 Меню")]
         ],
@@ -828,6 +828,59 @@ async def process_social_name(message: types.Message, state: FSMContext):
 
     await state.clear()
 
+
+# === Language Menu Handler ===
+@router.message(F.text == "🌍 Язык")
+async def manager_language_menu(message: types.Message):
+    """Show language selection for manager reports"""
+    if not is_manager(message.from_user.id, message.bot):
+        return
+    
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    lang_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🇷🇺 Русский", callback_data="manager_lang_ru"),
+         InlineKeyboardButton(text="🇺🇸 English", callback_data="manager_lang_en")],
+        [InlineKeyboardButton(text="🇰🇿 Қазақша", callback_data="manager_lang_kz"),
+         InlineKeyboardButton(text="🇰🇬 Кыргызча", callback_data="manager_lang_ky")],
+        [InlineKeyboardButton(text="🇺🇿 O'zbekcha", callback_data="manager_lang_uz"),
+         InlineKeyboardButton(text="🇺🇦 Українська", callback_data="manager_lang_uk")]
+    ])
+    
+    await message.answer("🌍 Выберите язык для отчётов о лидах:", reply_markup=lang_kb)
+
+@router.callback_query(F.data.startswith("manager_lang_"))
+async def set_manager_language_callback(callback: types.CallbackQuery):
+    """Handle manager language selection"""
+    if not is_manager(callback.from_user.id, callback.bot):
+        await callback.answer("❌ Недостаточно прав", show_alert=True)
+        return
+    
+    lang = callback.data.split("_")[-1]
+    company_id = getattr(callback.bot, 'company_id', 1)
+    
+    lang_names = {
+        'ru': '🇷🇺 Русский', 'en': '🇺🇸 English', 'kz': '🇰🇿 Қазақша',
+        'ky': '🇰🇬 Кыргызча', 'uz': '🇺🇿 O\'zbekcha', 'uk': '🇺🇦 Українська'
+    }
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.patch(
+                f'{API_BASE_URL}/sales/companies/{company_id}/language',
+                json={"language": lang},
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
+                if resp.status == 200:
+                    await callback.message.edit_text(f"✅ Язык отчётов изменён на: {lang_names.get(lang, lang)}")
+                else:
+                    await callback.message.edit_text("❌ Ошибка при смене языка")
+    except Exception as e:
+        logging.error(f"Language change error: {e}")
+        await callback.message.edit_text(f"❌ Ошибка: {str(e)[:50]}")
+    
+    await callback.answer()
+
+
 # === GENERAL HANDLER (MUST BE LAST) ===
 
 @router.message(ManagerFlow.editing_widget_domain)
@@ -1297,6 +1350,7 @@ async def process_social_name(message: types.Message, state: FSMContext):
         await message.answer(f"❌ Ошибка: {str(e)[:50]}")
 
     await state.clear()
+
 
 # === Tier Command Handler ===
 async def format_tier_info(company_id: int) -> str:

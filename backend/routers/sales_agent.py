@@ -39,7 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.future import select
 from database import get_db
-from models import SalesAgentConfig, ProductSelectionSession, VoiceMessage, Lead, Interaction, UserPreference, Company, SocialWidget, WebWidget
+from models import SalesAgentConfig, ProductSelectionSession, VoiceMessage, Lead, Interaction, UserPreference, Company, Company, SocialWidget, WebWidget
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 import uuid
@@ -440,23 +440,25 @@ async def sales_chat(request: Request, company_id: int, chat_data: ChatMessage, 
                 {'sender': 'bot', 'text': ai_response}
             ]
             
-            summary = await ai_service.generate_conversation_summary(full_history, language)
+            # Получаем язык менеджера из компании
+            company_result = await db.execute(select(Company).where(Company.id == company_id))
+            company_obj = company_result.scalars().first()
+            manager_lang = company_obj.default_language if company_obj and company_obj.default_language else "ru"
             
-            # Extract temperature from summary
-            import re
-            temp_match = re.search(r'Готовность[:\s]+(\w+)', summary, re.IGNORECASE)
-            if temp_match:
-                temp_word = temp_match.group(1).lower()
-                if 'горяч' in temp_word or 'hot' in temp_word:
-                    temperature = '🔥 горячий'
-                elif 'холод' in temp_word or 'cold' in temp_word:
-                    temperature = '❄️ холодный'
-                else:
-                    temperature = '🌤 теплый'
+            summary = await ai_service.generate_conversation_summary(full_history, language, manager_language=manager_lang)
+            
+            # Extract temperature from AI summary
+            summary_lower = summary.lower()
+            if 'горячий' in summary_lower or 'hot' in summary_lower or '🔥' in summary:
+                temperature = '🔥 горячий'
+            elif 'холодный' in summary_lower or 'cold' in summary_lower or '❄️' in summary:
+                temperature = '❄️ холодный'
             else:
                 temperature = '🌤 теплый'
             
-            summary = f"🌡 Температура: {temperature}\n\n" + summary
+            # Добавляем температуру в начало если её там нет
+            if '🌡 Температура:' not in summary:
+                summary = f"🌡 Температура: {temperature}\n\n" + summary
             # Save temperature to lead contact_info
             if not lead.contact_info:
                 lead.contact_info = {}
@@ -1034,6 +1036,21 @@ async def check_db_health(db: AsyncSession = Depends(get_db)):
     except Exception as e:
         return {'status': 'error', 'database': str(e)}
 
+
+
+@router.patch('/companies/{company_id}/language')
+async def update_company_language(company_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    """Update company default language (for manager reports)"""
+    from models import Company
+    data = await request.json()
+    result = await db.execute(select(Company).where(Company.id == company_id))
+    company = result.scalars().first()
+    if company:
+        company.default_language = data.get('language', 'ru')
+        await db.commit()
+        logging.info(f"✅ Company {company_id} language updated to {company.default_language}")
+        return {"status": "ok", "language": company.default_language}
+    raise HTTPException(status_code=404, detail="Company not found")
 
 @router.post('/{company_id}/voice')
 @limiter.limit('10/minute')
