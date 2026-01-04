@@ -509,6 +509,9 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
                                     InlineKeyboardButton(text=f"✏️ Edit #{widget_id}", callback_data=f"edit_widget_{widget_id}"),
                                     InlineKeyboardButton(text=f"🗑 Delete #{widget_id}", callback_data=f"delete_widget_{widget_id}")
                                 ])
+                                buttons.append([
+                                    InlineKeyboardButton(text=f"📲 QR код #{widget_id}", callback_data=f"qr_widget_{widget_id}")
+                                ])
                         else:
                             msg_parts.append("<i>Социальных каналов пока нет</i>")
                         
@@ -1056,6 +1059,44 @@ async def edit_widget_callback(callback: types.CallbackQuery, state: FSMContext)
     
     await callback.answer()
     await callback.answer()
+
+# === QR Code Generator ===
+@router.callback_query(F.data.startswith("qr_widget_"))
+async def qr_widget_callback(callback: types.CallbackQuery):
+    """Generate QR code for social widget URL"""
+    if not is_manager(callback.from_user.id, callback.bot):
+        await callback.answer("❌ Недостаточно прав", show_alert=True)
+        return
+
+    widget_id = callback.data.split("_")[-1]
+    company_id = getattr(callback.bot, 'company_id', 1)
+    url = f"https://bizdnai.com/w/{company_id}/{widget_id}"
+
+    try:
+        import qrcode
+        from aiogram.types import BufferedInputFile
+        
+        # Generate QR code
+        qr = qrcode.QRCode(version=1, box_size=10, border=2)
+        qr.add_data(url)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+        img = img.resize((250, 250))
+        
+        # Save to buffer
+        buffer = io.BytesIO()
+        img.save(buffer, format='PNG')
+        buffer.seek(0)
+        
+        # Send as photo
+        await callback.message.answer_photo(
+            photo=BufferedInputFile(buffer.getvalue(), filename=f"qr_{widget_id}.png"),
+            caption=f"📲 QR код для канала #{widget_id}\n🔗 {url}"
+        )
+        await callback.answer("✅ QR код создан")
+    except Exception as e:
+        logging.error(f"QR generation error: {e}")
+        await callback.answer(f"❌ Ошибка: {str(e)[:30]}", show_alert=True)
 
 @router.callback_query(F.data.startswith("delete_widget_"))
 async def delete_widget_callback(callback: types.CallbackQuery):

@@ -1409,7 +1409,7 @@ async def get_pricing_html(db: AsyncSession = Depends(get_db)):
         'basic': ('Стандартное приветствие, базовая квалификация, сбор контактов', 'Standard greeting, basic qualification, contact collection'),
         'standard': ('Персонализация, расширенная квалификация, FAQ', 'Personalization, extended qualification, FAQ training'),
         'advanced': ('База знаний, умная квалификация, сценарии', 'Knowledge base, smart qualification, dialog scripts'),
-        'custom': ('Полная настройка, CRM интеграция, 24/7 поддержка', 'Full customization, CRM integration, 24/7 support')
+        'custom': ('Полная настройка', 'Full customization, CRM integration, 24/7 support')
     }
     
     # Generate package rows
