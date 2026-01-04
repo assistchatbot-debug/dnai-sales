@@ -755,3 +755,13 @@ Commit your changes
 Push to the branch
 Open a Pull Request
 © 2025 BizDNAi
+
+## 📲 QR Codes for Social Widgets
+
+Manager bot can generate QR codes for standalone widget URLs:
+
+1. Open **📢 Каналы** menu
+2. Click **📲 QR код #{id}** button
+3. Get 250x250 PNG QR code linking to `https://bizdnai.com/w/{company_id}/{widget_id}`
+
+Useful for printing on business cards, flyers, or displays.
