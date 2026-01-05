@@ -160,7 +160,6 @@ class VoiceMessage(Base):
     session_id = Column(UUID(as_uuid=True), ForeignKey("product_selection_sessions.id"))
     company_id = Column(Integer, ForeignKey("companies.id"))
     
-    audio_file_path = Column(String)
     transcribed_text = Column(Text)
     transcription_language = Column(String)
     confidence_score = Column(Float)
