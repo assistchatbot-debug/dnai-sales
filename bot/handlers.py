@@ -347,7 +347,18 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
                         msg=f"📊 <b>Лиды за неделю</b>\n\nВсего: {len(week_leads)}\n\n<b>По источникам:</b>\n"
                         for source,count in sorted(sources.items(), key=lambda x: (1, int(x[0])) if x[0].isdigit() else (0, x[0].lower())):
                             if source.isdigit():
-                                msg+=f"📸 Instagram #{source}: {count}\n"
+                                # Get widget name from database
+                                try:
+                                    async with aiohttp.ClientSession() as sess:
+                                        async with sess.get(f'{API_BASE_URL}/sales/companies/{company_id}/widgets/{source}') as r:
+                                            if r.status == 200:
+                                                w = await r.json()
+                                                name = w.get('channel_name', f'Widget #{source}').capitalize()
+                                                msg+=f"📸 {name} #{source}: {count}\n"
+                                            else:
+                                                msg+=f"📸 Widget #{source}: {count}\n"
+                                except:
+                                    msg+=f"📸 Widget #{source}: {count}\n"
                             else:
                                 msg+=f"• {source}: {count}\n"
                         msg+="\n<b>Последние 10:</b>\n"
@@ -379,7 +390,18 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
                         msg=f"📊 <b>Лиды за месяц</b>\n\nВсего: {len(month_leads)}\n\n<b>По источникам:</b>\n"
                         for source,count in sorted(sources.items(), key=lambda x: (1, int(x[0])) if x[0].isdigit() else (0, x[0].lower())):
                             if source.isdigit():
-                                msg+=f"📸 Instagram #{source}: {count}\n"
+                                # Get widget name from database
+                                try:
+                                    async with aiohttp.ClientSession() as sess:
+                                        async with sess.get(f'{API_BASE_URL}/sales/companies/{company_id}/widgets/{source}') as r:
+                                            if r.status == 200:
+                                                w = await r.json()
+                                                name = w.get('channel_name', f'Widget #{source}').capitalize()
+                                                msg+=f"📸 {name} #{source}: {count}\n"
+                                            else:
+                                                msg+=f"📸 Widget #{source}: {count}\n"
+                                except:
+                                    msg+=f"📸 Widget #{source}: {count}\n"
                             else:
                                 msg+=f"• {source}: {count}\n"
                         msg+="\n<b>Последние 10:</b>\n"
@@ -442,7 +464,18 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
                         
                         for source, count in sorted(by_source.items(), key=sort_key):
                             if source.isdigit():
-                                emoji_name = f'📸 Instagram #{source}'
+                                # Get widget name from database
+                                try:
+                                    async with aiohttp.ClientSession() as sess:
+                                        async with sess.get(f'{API_BASE_URL}/sales/companies/{company_id}/widgets/{source}') as r:
+                                            if r.status == 200:
+                                                w = await r.json()
+                                                name = w.get('channel_name', f'Widget #{source}').capitalize()
+                                                emoji_name = f'📸 {name} #{source}'
+                                            else:
+                                                emoji_name = f'📸 Widget #{source}'
+                                except:
+                                    emoji_name = f'📸 Widget #{source}'
                             else:
                                 emoji_name = source_emojis.get(source, f'📍 {source.capitalize()}')
                             stats_text += f"{emoji_name}: {count}\n"
@@ -637,7 +670,7 @@ async def process_greeting(message: types.Message, state: FSMContext):
                     'channel_name': channel_name_raw,
                     'greeting_message': greeting
                 },
-                timeout=aiohttp.ClientTimeout(total=10)
+                timeout=aiohttp.ClientTimeout(total=30)
             ) as resp:
                 if resp.status == 200:
                     result = await resp.json()
