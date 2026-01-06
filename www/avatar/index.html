@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BizDNAi - AI Assistant</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+body { margin: 0; padding: 0; background-color: #1A1A1A; color: #E5E7EB; }
+canvas#neural-bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; background: #1A1A1A; opacity: 0.3; pointer-events: none; }
+.container { position: relative; max-width: 500px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 30px 20px; z-index: 1; }
+.header { text-align: center; margin-bottom: 30px; transition: margin-bottom 0.5s ease; }
+.header.minimized { margin-bottom: 15px; }
+.logo { width: 100px; height: 100px; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; }
+.logo img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.company-name { font-size: 32px; font-weight: 700; color: #fff; margin-bottom: 10px; text-shadow: 0 0 20px rgba(0, 212, 255, 0.5); }
+.company-description { font-size: 16px; color: rgba(255,255,255,0.8); line-height: 1.5; max-width: 400px; margin: 0 auto; white-space: pre-line; }
+.avatar-section { position: relative; display: flex; flex-direction: column; align-items: center; transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
+.avatar-section.chat-open { transform: translateY(-60px); }
+.avatar-container { position: relative; width: 220px; height: 360px; cursor: pointer; transition: transform 0.3s ease; margin-bottom: 15px; }
+.avatar-container:hover { transform: scale(1.03); }
+#avatar-canvas { width: 100%; height: 100%; border-radius: 20px; }
+#avatar-video { display: none; }
+.state-badge { position: absolute; top: 10px; right: 10px; padding: 6px 12px; background: rgba(0, 212, 255, 0.3); backdrop-filter: blur(10px); border-radius: 20px; font-size: 11px; color: #fff; font-weight: 600; border: 1px solid rgba(0, 212, 255, 0.5); }
+.lang-selector-main { display: flex; gap: 6px; margin-bottom: 15px; flex-wrap: wrap; justify-content: center; }
+.lang-btn { padding: 6px 12px; background: rgba(255,255,255,0.1); border: 1px solid rgba(0, 212, 255, 0.2); border-radius: 15px; color: #fff; font-size: 13px; cursor: pointer; transition: all 0.3s; }
+.lang-btn:hover { background: rgba(0, 212, 255, 0.2); }
+.lang-btn.active { background: linear-gradient(135deg, #00D4FF 0%, #D81BFF 100%); border-color: transparent; color: #000; font-weight: 600; }
+.chat-button { padding: 16px 40px; background: linear-gradient(135deg, #00D4FF 0%, #D81BFF 100%); border: none; border-radius: 30px; color: #000; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 0 20px rgba(0, 212, 255, 0.4); }
+.chat-button:hover { transform: translateY(-3px); box-shadow: 0 0 30px rgba(0, 212, 255, 0.6); }
+.chat-window { position: relative; width: 100%; max-width: 450px; background: rgba(30, 41, 59, 0.95); backdrop-filter: blur(20px); border-radius: 20px; border: 1px solid rgba(0, 212, 255, 0.2); overflow: hidden; margin-top: 20px; box-shadow: 0 0 40px rgba(0, 212, 255, 0.3); max-height: 0; opacity: 0; transition: max-height 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.5s ease; }
+.chat-window.open { max-height: 650px; opacity: 1; margin-top: -10px; }
+.chat-header { background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(0, 212, 255, 0.2)); padding: 12px 16px; border-bottom: 1px solid rgba(0, 212, 255, 0.2); display: flex; justify-content: space-between; align-items: center; }
+.reset-btn { background: none; border: none; color: #fff; font-size: 20px; cursor: pointer; opacity: 0.7; transition: all 0.2s; padding: 0 8px; }
+.reset-btn:hover { opacity: 1; transform: rotate(360deg); }
+.close-btn { background: none; border: none; color: #fff; font-size: 24px; cursor: pointer; opacity: 0.7; transition: all 0.2s; }
+.close-btn:hover { opacity: 1; transform: rotate(90deg); }
+.chat-messages { padding: 16px; overflow-y: auto; max-height: 350px; }
+.message { margin-bottom: 12px; padding: 10px 14px; border-radius: 16px; max-width: 80%; font-size: 14px; line-height: 1.5; clear: both; }
+.message.bot { background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(0, 212, 255, 0.2)); border-bottom-left-radius: 4px; float: left; }
+.message.user { background: rgba(99, 102, 241, 0.4); float: right; border-bottom-right-radius: 4px; }
+.chat-input { display: flex; gap: 8px; padding: 12px; border-top: 1px solid rgba(0, 212, 255, 0.2); background: rgba(0, 0, 0, 0.2); }
+.chat-input textarea { flex: 1; padding: 10px 14px; border: none; border-radius: 20px; background: rgba(255,255,255,0.1); color: #fff; font-size: 14px; outline: none; resize: none; max-height: 100px; }
+.voice-btn { width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.1); border: none; color: #fff; font-size: 18px; cursor: pointer; transition: all 0.3s; }
+.voice-btn:hover { background: rgba(0, 212, 255, 0.3); }
+.voice-btn.recording { background: #ef4444; animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+.send-btn { width: 40px; height: 40px; border-radius: 50%; border: none; background: linear-gradient(135deg, #00D4FF 0%, #D81BFF 100%); color: #000; font-weight: 600; cursor: pointer; font-size: 16px; }
+.typing-indicator { display: none; padding: 10px 14px; }
+.typing-indicator.active { display: block; }
+.typing-dots { display: flex; gap: 4px; }
+.typing-dots span { width: 8px; height: 8px; border-radius: 50%; background: rgba(0, 212, 255, 0.6); animation: typing 1.4s infinite; }
+.typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typing { 0%, 60%, 100% { opacity: 0.3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-8px); } }
+</style>
+</head>
+<body>
+
+<canvas id="neural-bg"></canvas>
+
+<div class="container">
+  <div class="header" id="header">
+    <div class="logo"><img id="mainLogo" src="https://bizdnai.com/logo.png" alt="Logo"></div>
+    <h1 class="company-name" id="companyName">BizDNAi</h1>
+    <p class="company-description" id="companyDesc"></p>
+  </div>
+
+  <div class="avatar-section" id="avatar-section">
+    <div class="avatar-container" id="avatar-container">
+      <div class="state-badge" id="state-badge">Готов</div>
+      <video id="avatar-video" muted playsinline></video>
+      <canvas id="avatar-canvas" width="396" height="640"></canvas>
+    </div>
+
+    <div class="lang-selector-main" id="langSelector">
+      <button class="lang-btn active" data-lang="ru">🇷🇺</button>
+      <button class="lang-btn" data-lang="en">🇺🇸</button>
+      <button class="lang-btn" data-lang="kz">🇰🇿</button>
+      <button class="lang-btn" data-lang="ky">🇰🇬</button>
+      <button class="lang-btn" data-lang="uz">🇺🇿</button>
+      <button class="lang-btn" data-lang="uk">🇺🇦</button>
+    </div>
+
+    <button class="chat-button" id="chat-button">
+      <span id="chatButtonText">💬 Начать Диалог</span>
+    </button>
+  </div>
+
+  <div class="chat-window" id="chat-window">
+    <div class="chat-header">
+      <div>
+        <div style="color: #fff; font-weight: 600; font-size: 16px;">AI Ассистент</div>
+        <div style="color: rgba(255,255,255,0.7); font-size: 13px; margin-top: 4px;">
+          <span style="color: #10b981;">●</span> Онлайн
+        </div>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button class="reset-btn" id="reset-btn" title="Сбросить диалог">🔄</button>
+        <button class="close-btn" id="close-chat">×</button>
+      </div>
+    </div>
+    <div class="chat-messages" id="chat-messages"></div>
+    <div class="typing-indicator" id="typing-indicator">
+      <div class="typing-dots"><span></span><span></span><span></span></div>
+    </div>
+    <div class="chat-input">
+      <textarea id="user-input" placeholder="Сообщение..." rows="1"></textarea>
+      <button class="voice-btn" id="voiceBtn">🎤</button>
+      <button class="send-btn" id="send-btn">➤</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const companyId = 1;
+const API = '/sales/' + companyId;
+let sessionId = null;
+let visitorId = localStorage.getItem('bizdnaii_vid') || 'v_' + Math.random().toString(36).substr(2, 9);
+localStorage.setItem('bizdnaii_vid', visitorId);
+
+const langMap = { ru: 'ru', en: 'en', kz: 'kz', ky: 'ky', uz: 'uz', uk: 'uk' };
+let companyDescriptions = {};
+let currentLang = 'ru';
+
+const translations = {
+  chatButtonStart: { ru: '💬 Начать Диалог', en: '💬 Start Chat', kz: '💬 Диалог бастау', ky: '💬 Диалог баштоо', uz: '💬 Suhbatni boshlash', uk: '💬 Почати Діалог' },
+  chatButtonClose: { ru: '✕ Закрыть', en: '✕ Close', kz: '✕ Жабу', ky: '✕ Жабуу', uz: '✕ Yopish', uk: '✕ Закрити' },
+  placeholder: { ru: 'Сообщение...', en: 'Message...', kz: 'Хабарлама...', ky: 'Билдирүү...', uz: 'Xabar...', uk: 'Повідомлення...' },
+  greeting: { ru: 'Здравствуйте! Я ваш AI-помощник. Чем могу помочь?', en: 'Hello! I am your AI assistant. How can I help?', kz: 'Сәлеметсіз бе! Мен сіздің AI көмекшісімін. Қалай көмектесе аламын?', ky: 'Салам! Мен сиздин AI жардамчыңызмын. Кантип жардам бере алам?', uz: 'Salom! Men sizning AI yordamchingizman. Qanday yordam bera olaman?', uk: 'Вітаю! Я ваш AI-помічник. Чим можу допомогти?' }
+};
+
+fetch(API + '/company-info')
+  .then(r => r.json())
+  .then(data => {
+    if (data.logo_url) mainLogo.src = data.logo_url;
+    if (data.company_name) companyName.textContent = data.company_name;
+    if (data.descriptions) {
+      companyDescriptions = data.descriptions;
+      updateDescription();
+    } else if (data.description) {
+      companyDesc.textContent = data.description;
+    }
+  })
+  .catch(e => console.error(e));
+
+function updateDescription() {
+  if (companyDescriptions[currentLang]) {
+    companyDesc.textContent = companyDescriptions[currentLang];
+  }
+}
+
+function updateChatButton(isOpen) {
+  const text = isOpen ? translations.chatButtonClose[currentLang] : translations.chatButtonStart[currentLang];
+  chatButtonText.textContent = text;
+}
+
+function updatePlaceholder() {
+  document.getElementById('user-input').placeholder = translations.placeholder[currentLang] || 'Сообщение...';
+}
+
+class AvatarController {
+  constructor() {
+    this.video = document.getElementById('avatar-video');
+    this.canvas = document.getElementById('avatar-canvas');
+    this.ctx = this.canvas.getContext('2d');
+    this.stateBadge = document.getElementById('state-badge');
+    this.avatarContainer = document.getElementById('avatar-container');
+    this.currentState = 'idle';
+    this.language = 'ru';
+    this.isFirstOpen = true;
+    this.scalePhase = 0;
+    this.animationFrameId = null;
+    
+    this.videos = {
+      greeting: 'videos/greeting.mp4',
+      waiting_call: 'videos/waiting_call.mp4',
+      waiting_blink: 'videos/waiting_blink.mp4',
+      thinking: 'videos/thinking.mp4',
+      confused: 'videos/confused.mp4',
+      speaking: 'videos/speaking.mp4',
+      thanking: 'videos/thanking.mp4'
+    };
+    
+    this.stateLabels = {
+      ru: { idle: 'Готов', greeting: 'Приветствую', waiting: 'Жду', waiting_call: 'Жду ответа', thinking: 'Думаю...', speaking: 'Говорю', confused: 'Не знаю', thanking: 'Спасибо!' },
+      en: { idle: 'Ready', greeting: 'Greeting', waiting: 'Waiting', waiting_call: 'Waiting', thinking: 'Thinking...', speaking: 'Speaking', confused: 'Not sure', thanking: 'Thank you!' },
+      kz: { idle: 'Дайын', greeting: 'Сәлемдесу', waiting: 'Күтемін', waiting_call: 'Күтемін', thinking: 'Ойланамын...', speaking: 'Айтамын', confused: 'Білмеймін', thanking: 'Рахмет!' },
+      ky: { idle: 'Даяр', greeting: 'Салам', waiting: 'Күтөм', waiting_call: 'Күтөм', thinking: 'Ойлонууда...', speaking: 'Айтып жатам', confused: 'Билбейм', thanking: 'Рахмат!' },
+      uz: { idle: 'Tayyor', greeting: 'Salom', waiting: 'Kutmoqda', waiting_call: 'Kutmoqda', thinking: 'O\'ylayapman...', speaking: 'Gapiryapman', confused: 'Bilmayman', thanking: 'Rahmat!' },
+      uk: { idle: 'Готовий', greeting: 'Вітаю', waiting: 'Чекаю', waiting_call: 'Чекаю', thinking: 'Думаю...', speaking: 'Говорю', confused: 'Не знаю', thanking: 'Дякую!' }
+    };
+    
+    this.init();
+  }
+  
+  init() {
+    this.loadVideo('waiting_blink');
+    this.video.loop = true;
+    this.video.addEventListener('loadeddata', () => {
+      this.video.play().catch(e => console.log('Autoplay prevented'));
+      this.startDrawing();
+    });
+    this.video.addEventListener('ended', () => this.onVideoEnded());
+  }
+  
+  startDrawing() {
+    if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
+    this.scalePhase = 0;
+    this.drawFrame();
+  }
+  
+  setState(newState) {
+    this.currentState = newState;
+    this.updateStateBadge();
+    switch(newState) {
+      case 'greeting': this.loadVideo('greeting'); this.video.loop = false; break;
+      case 'waiting': this.loadVideo('waiting_blink'); this.video.loop = true; break;
+      case 'waiting_call': this.loadVideo('waiting_call'); this.video.loop = false; break;
+      case 'thinking': this.loadVideo('thinking'); this.video.loop = true; break;
+      case 'speaking': this.loadVideo('speaking'); this.video.loop = true; break;
+      case 'confused': this.loadVideo('confused'); this.video.loop = false; break;
+      case 'thanking': this.loadVideo('thanking'); this.video.loop = false; break;
+    }
+  }
+  
+  updateStateBadge() {
+    const labels = this.stateLabels[this.language] || this.stateLabels.ru;
+    this.stateBadge.textContent = labels[this.currentState] || this.currentState;
+  }
+  
+  onVideoEnded() {
+    if(this.currentState==='greeting') this.setState('waiting_call');
+    else if(this.currentState==='waiting_call') this.setState('waiting');
+    else if(this.currentState==='confused'||this.currentState==='thanking') this.setState('waiting');
+  }
+  
+  loadVideo(name) {
+    if(this.videos[name]){
+      this.video.src=this.videos[name];
+      this.video.load();
+    }
+  }
+  
+  drawFrame() {
+    if(this.video.paused||this.video.ended){
+      this.animationFrameId = requestAnimationFrame(()=>this.drawFrame());
+      return;
+    }
+    
+    const vw=this.video.videoWidth,vh=this.video.videoHeight,cw=this.canvas.width,ch=this.canvas.height;
+    if(vw===0||vh===0){
+      this.animationFrameId = requestAnimationFrame(()=>this.drawFrame());
+      return;
+    }
+    
+    const scale=Math.max(cw/vw,ch/vh);
+    const scaleOffset=1+Math.sin(this.scalePhase)*0.012;
+    this.scalePhase+=0.02;
+    
+    const w=vw*scale*scaleOffset,h=vh*scale*scaleOffset,x=(cw-w)/2,y=(ch-h)/2;
+    this.ctx.clearRect(0,0,cw,ch);
+    
+    this.ctx.save();
+    this.ctx.shadowColor='rgba(0,0,0,0.6)';
+    this.ctx.shadowBlur=50;
+    this.ctx.shadowOffsetY=20;
+    this.ctx.drawImage(this.video,x,y,w,h);
+    this.ctx.restore();
+    
+    this.applyFadeMask();
+    this.applyHighlights();
+    this.animationFrameId = requestAnimationFrame(()=>this.drawFrame());
+  }
+  
+  applyFadeMask() {
+    const cw=this.canvas.width,ch=this.canvas.height;
+    this.ctx.save();
+    this.ctx.globalCompositeOperation='destination-in';
+    const gradX=this.ctx.createLinearGradient(0,0,cw,0);
+    gradX.addColorStop(0,'rgba(255,255,255,0)');
+    gradX.addColorStop(0.12,'rgba(255,255,255,1)');
+    gradX.addColorStop(0.88,'rgba(255,255,255,1)');
+    gradX.addColorStop(1,'rgba(255,255,255,0)');
+    this.ctx.fillStyle=gradX;
+    this.ctx.fillRect(0,0,cw,ch);
+    const gradY=this.ctx.createLinearGradient(0,0,0,ch);
+    gradY.addColorStop(0,'rgba(255,255,255,0)');
+    gradY.addColorStop(0.08,'rgba(255,255,255,1)');
+    gradY.addColorStop(0.92,'rgba(255,255,255,1)');
+    gradY.addColorStop(1,'rgba(255,255,255,0)');
+    this.ctx.fillStyle=gradY;
+    this.ctx.fillRect(0,0,cw,ch);
+    this.ctx.restore();
+  }
+  
+  applyHighlights() {
+    const cw=this.canvas.width,ch=this.canvas.height;
+    this.ctx.save();
+    this.ctx.globalCompositeOperation='lighter';
+    const gradTop=this.ctx.createLinearGradient(0,0,0,ch*0.25);
+    gradTop.addColorStop(0,'rgba(255,255,255,0.15)');
+    gradTop.addColorStop(1,'rgba(255,255,255,0)');
+    this.ctx.fillStyle=gradTop;
+    this.ctx.fillRect(0,0,cw,ch*0.25);
+    this.ctx.restore();
+  }
+  
+  setLanguage(lang) {
+    this.language = lang;
+    this.updateStateBadge();
+  }
+  
+  onWidgetOpen() {
+    if(this.isFirstOpen){
+      this.isFirstOpen=false;
+      this.setState('greeting');
+    }
+  }
+  
+  onMessageSent() { this.setState('thinking'); }
+  
+  onAIResponse(text, isConfused=false) {
+    const confusedKeywords = ['не уверен', 'не знаю', 'извините', 'к сожалению', 'не могу ответить', 'погода', 'новости'];
+    const responseText = (text || '').toLowerCase();
+    const shouldShowConfused = isConfused || confusedKeywords.some(kw => responseText.includes(kw));
+    
+    if(shouldShowConfused) {
+      this.setState('confused');
+    } else {
+      this.setState('speaking');
+      setTimeout(()=>this.setState('waiting'),3000);
+    }
+  }
+  
+  onContactReceived() {
+    this.setState('thanking');
+  }
+}
+
+class ChatUI {
+  constructor(avatar) {
+    this.avatar = avatar;
+    this.chatWindow = document.getElementById('chat-window');
+    this.chatMessages = document.getElementById('chat-messages');
+    this.userInput = document.getElementById('user-input');
+    this.chatButton = document.getElementById('chat-button');
+    this.closeBtn = document.getElementById('close-chat');
+    this.resetBtn = document.getElementById('reset-btn');
+    this.typingIndicator = document.getElementById('typing-indicator');
+    this.avatarSection = document.getElementById('avatar-section');
+    this.header = document.getElementById('header');
+    this.voiceBtn = document.getElementById('voiceBtn');
+    this.isOpen = false;
+    this.mediaRecorder = null;
+    this.audioChunks = [];
+    this.isRecording = false;
+    
+    this.chatButton.addEventListener('click',()=>this.toggle());
+    document.getElementById('avatar-container').addEventListener('click',()=>this.toggle());
+    this.closeBtn.addEventListener('click',()=>this.close());
+    this.resetBtn.addEventListener('click',()=>this.resetChat());
+    document.getElementById('send-btn').addEventListener('click',()=>this.send());
+    this.userInput.addEventListener('keypress',(e)=>{
+      if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();this.send();}
+    });
+    
+    this.voiceBtn.addEventListener('pointerdown', (e) => this.startRecording(e));
+    this.voiceBtn.addEventListener('pointerup', (e) => this.stopRecording(e));
+    this.voiceBtn.addEventListener('pointercancel', (e) => this.stopRecording(e));
+    
+    document.querySelectorAll('#langSelector .lang-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#langSelector .lang-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentLang = btn.dataset.lang;
+        this.avatar.setLanguage(langMap[currentLang] || 'ru');
+        updateDescription();
+        updateChatButton(this.isOpen);
+        updatePlaceholder();
+        this.resetChat();
+      });
+    });
+  }
+  
+  toggle(){this.isOpen?this.close():this.open();}
+  
+  async open(){
+    this.isOpen=true;
+    this.chatWindow.classList.add('open');
+    this.avatarSection.classList.add('chat-open');
+    this.header.classList.add('minimized');
+    this.avatar.onWidgetOpen();
+    updateChatButton(true);
+    this.userInput.focus();
+    if(!sessionId){
+      await this.startSession();
+      this.addMsg(translations.greeting[currentLang],'bot');
+    }
+  }
+  
+  close(){
+    this.isOpen=false;
+    this.chatWindow.classList.remove('open');
+    this.avatarSection.classList.remove('chat-open');
+    this.header.classList.remove('minimized');
+    updateChatButton(false);
+  }
+  
+  async startSession(){
+    try{
+      const r=await fetch(API+'/chat',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          message:'start_session',
+          user_id:visitorId,
+          username:'Гость',
+          source:'avatar_widget',
+          new_session:true,
+          language:langMap[currentLang] || 'ru'
+        })
+      });
+      const d=await r.json();
+      sessionId=d.session_id;
+    }catch(e){console.error(e);}
+  }
+  
+  resetChat(){
+    visitorId='v_'+Math.random().toString(36).substr(2,9);
+    localStorage.setItem('bizdnaii_vid',visitorId);
+    sessionId=null;
+    this.chatMessages.innerHTML='';
+    this.addMsg(translations.greeting[currentLang],'bot');
+  }
+  
+  async send(){
+    const text=this.userInput.value.trim();
+    if(!text)return;
+    this.addMsg(text,'user');
+    this.userInput.value='';
+    this.avatar.onMessageSent();
+    this.showTyping();
+    
+    try{
+      const r=await fetch(API+'/chat',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          message:text,
+          user_id:visitorId,
+          username:'Гость',
+          source:'avatar_widget',
+          session_id:sessionId,
+          language:langMap[currentLang] || 'ru'
+        })
+      });
+      const d=await r.json();
+      if(d.session_id) sessionId=d.session_id;
+      this.hideTyping();
+      if(d.response){
+        this.addMsg(d.response,'bot');
+        this.avatar.onAIResponse(d.response);
+      }
+    }catch(e){
+      this.hideTyping();
+      this.addMsg('Извините, произошла ошибка.','bot');
+      this.avatar.onAIResponse('', true);
+    }
+  }
+  
+  async startRecording(e) {
+    e.preventDefault();
+    if (this.isRecording) return;
+    
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      this.mediaRecorder = new MediaRecorder(stream);
+      this.audioChunks = [];
+      this.isRecording = true;
+      
+      this.mediaRecorder.ondataavailable = e => this.audioChunks.push(e.data);
+      this.mediaRecorder.onstop = async () => {
+        const blob = new Blob(this.audioChunks, { type: 'audio/webm' });
+        const formData = new FormData();
+        formData.append('file', blob, 'voice.webm');
+        formData.append('session_id', sessionId || 'new');
+        formData.append('user_id', visitorId);
+        formData.append('language', langMap[currentLang] || 'ru');
+        formData.append('source', 'avatar_widget');
+        
+        this.addMsg('🎤 Голосовое...', 'user');
+        this.showTyping();
+        
+        try {
+          const res = await fetch(API + '/voice', { method: 'POST', body: formData });
+          const data = await res.json();
+          
+          if (data.text) {
+            const msgs = this.chatMessages.querySelectorAll('.message.user');
+            msgs[msgs.length - 1].textContent = '🗣 ' + data.text;
+          }
+          
+          this.hideTyping();
+          if (data.response) {
+            this.addMsg(data.response, 'bot');
+            this.avatar.onAIResponse(data.response);
+          }
+        } catch (e) {
+          this.hideTyping();
+          this.addMsg('❌ Ошибка голоса', 'bot');
+          this.avatar.onAIResponse('', true);
+        }
+        
+        stream.getTracks().forEach(t => t.stop());
+        this.isRecording = false;
+      };
+      
+      this.mediaRecorder.start();
+      this.voiceBtn.classList.add('recording');
+    } catch (e) {
+      this.addMsg('❌ Микрофон недоступен', 'bot');
+      this.isRecording = false;
+    }
+  }
+  
+  stopRecording(e) {
+    e.preventDefault();
+    if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+      this.mediaRecorder.stop();
+      this.voiceBtn.classList.remove('recording');
+    }
+  }
+  
+  addMsg(text,sender){
+    const msg=document.createElement('div');
+    msg.className='message '+sender;
+    msg.textContent=text;
+    this.chatMessages.appendChild(msg);
+    this.chatMessages.scrollTop=this.chatMessages.scrollHeight;
+  }
+  
+  showTyping(){this.typingIndicator.classList.add('active');}
+  hideTyping(){this.typingIndicator.classList.remove('active');}
+}
+
+const c=document.getElementById('neural-bg');
+const ctx=c.getContext('2d');
+let w,h,lines=[];
+
+function resize(){w=c.width=window.innerWidth;h=c.height=window.innerHeight;}
+window.addEventListener('resize',resize);
+resize();
+
+function initLines(){
+  lines=[];
+  for(let i=0;i<55;i++){
+    lines.push({x:Math.random()*w,y:Math.random()*h,dx:(Math.random()-0.5)*0.6,dy:(Math.random()-0.5)*0.6});
+  }
+}
+initLines();
+
+function draw(){
+  ctx.clearRect(0,0,w,h);
+  for(let i=0;i<lines.length;i++){
+    let a=lines[i];
+    a.x+=a.dx;a.y+=a.dy;
+    if(a.x<0||a.x>w)a.dx*=-1;
+    if(a.y<0||a.y>h)a.dy*=-1;
+    ctx.beginPath();ctx.arc(a.x,a.y,1.2,0,Math.PI*2);ctx.fillStyle="#00D4FF";ctx.fill();
+    for(let j=i+1;j<lines.length;j++){
+      let b=lines[j],dx=a.x-b.x,dy=a.y-b.y,dist=Math.sqrt(dx*dx+dy*dy);
+      if(dist<120){
+        ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);
+        ctx.strokeStyle='rgba(0,212,255,'+(1-dist/120)*0.3+')';ctx.lineWidth=1;ctx.stroke();
+      }
+    }
+  }
+  requestAnimationFrame(draw);
+}
+draw();
+
+const avatar=new AvatarController();
+const chat=new ChatUI(avatar);
+console.log('🎭 Avatar initialized');
+</script>
+</body>
+</html>
