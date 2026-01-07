@@ -533,7 +533,9 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
                                 channel_name = w['channel_name']
                                 channel_display = channel_name.capitalize()
                                 widget_id = w['id']
-                                widget_url = f"https://bizdnai.com/w/{company_id}/{widget_id}"
+                                wtype = w.get('widget_type', 'classic')
+                                url_path = 'avatar' if wtype == 'avatar' else 'w'
+                                widget_url = f"https://bizdnai.com/{url_path}/{company_id}/{widget_id}"
                                 
                                 msg_parts.append(f"• {channel_display} (ID: {widget_id})")
                                 msg_parts.append(f"  🔗 {widget_url}")
@@ -658,6 +660,7 @@ async def process_greeting(message: types.Message, state: FSMContext):
     
     data = await state.get_data()
     channel_name_raw = data.get('channel_name', '')
+    widget_type = data.get('widget_type', 'classic')
     company_id = message.bot.company_id
     
     await message.answer("⏳ Создаю канал...")
@@ -668,17 +671,21 @@ async def process_greeting(message: types.Message, state: FSMContext):
                 f'{API_BASE_URL}/sales/companies/{company_id}/widgets',
                 json={
                     'channel_name': channel_name_raw,
-                    'greeting_message': greeting
+                    'greeting_message': greeting,
+                    'widget_type': widget_type
                 },
                 timeout=aiohttp.ClientTimeout(total=30)
             ) as resp:
                 if resp.status == 200:
                     result = await resp.json()
-                    url = result.get('url', '')
-                    name = result.get('channel_name', '')
+                    wid = result.get('id', '')
+                    url_path = 'avatar' if widget_type == 'avatar' else 'w'
+                    url = f"https://bizdnai.com/{url_path}/{company_id}/{wid}"
+                    type_icon = "🎭" if widget_type == 'avatar' else "📱"
                     
                     await message.answer(
                         f"🎉 <b>Канал создан!</b>\n\n"
+                        f"{type_icon} Тип: {'Аватар' if widget_type == 'avatar' else 'Классический'}\n"
                         f"📱 Название: {channel_name_raw}\n"
                         f"🔗 URL: {url}\n"
                         f"💬 Приветствие: {greeting or 'стандартное'}\n\n"
@@ -1038,17 +1045,25 @@ async def handle_text(message: types.Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("create_widget_"))
 async def create_widget_callback(callback: types.CallbackQuery, state: FSMContext):
-    """Handle 'Create Widget' button"""
+    """Handle Create Widget button - ask for widget type"""
     if not is_manager(callback.from_user.id, callback.bot):
         await callback.answer("❌ Недостаточно прав", show_alert=True)
         return
-    
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🎭 С аватаром", callback_data="widgettype_avatar")],
+        [InlineKeyboardButton(text="📱 Классический", callback_data="widgettype_classic")]
+    ])
+    await callback.message.answer("📝 <b>Выберите тип виджета:</b>", reply_markup=keyboard, parse_mode='HTML')
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("widgettype_"))
+async def widget_type_callback(callback: types.CallbackQuery, state: FSMContext):
+    widget_type = callback.data.replace("widgettype_", "")
+    await state.update_data(widget_type=widget_type)
+    type_name = "🎭 Аватар" if widget_type == "avatar" else "📱 Классический"
     await state.set_state(ManagerFlow.entering_channel_name)
-    await callback.message.answer(
-        "📝 <b>Создание канала</b>\n\n"
-        "Введите название канала (например: Instagram, Facebook, ВКонтакте):",
-        parse_mode='HTML'
-    )
+    await callback.message.edit_text(f"Тип: {type_name}\n\nВведите название канала:", parse_mode='HTML')
     await callback.answer()
 
 @router.callback_query(F.data.startswith("edit_widget_"))
@@ -1103,7 +1118,16 @@ async def qr_widget_callback(callback: types.CallbackQuery):
 
     widget_id = callback.data.split("_")[-1]
     company_id = getattr(callback.bot, 'company_id', 1)
-    url = f"https://bizdnai.com/w/{company_id}/{widget_id}"
+    # Get widget type
+    try:
+        async with aiohttp.ClientSession() as sess:
+            async with sess.get(f'{API_BASE_URL}/sales/companies/{company_id}/widgets/{widget_id}') as r:
+                wdata = await r.json() if r.status == 200 else {}
+        wtype = wdata.get('widget_type', 'classic')
+    except:
+        wtype = 'classic'
+    url_path = 'avatar' if wtype == 'avatar' else 'w'
+    url = f"https://bizdnai.com/{url_path}/{company_id}/{widget_id}"
 
     try:
         import qrcode
