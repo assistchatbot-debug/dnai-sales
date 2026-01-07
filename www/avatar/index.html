@@ -53,13 +53,16 @@ canvas#neural-bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
 .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
 .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
 @keyframes typing { 0%, 60%, 100% { opacity: 0.3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-8px); } }
+.error-page { text-align: center; padding: 50px; }
+.error-page h1 { font-size: 48px; color: #ef4444; margin-bottom: 20px; }
+.error-page p { color: rgba(255,255,255,0.7); font-size: 18px; }
 </style>
 </head>
 <body>
 
 <canvas id="neural-bg"></canvas>
 
-<div class="container">
+<div class="container" id="main-container">
   <div class="header" id="header">
     <div class="logo"><img id="mainLogo" src="https://bizdnai.com/logo.png" alt="Logo"></div>
     <h1 class="company-name" id="companyName">BizDNAi</h1>
@@ -113,7 +116,30 @@ canvas#neural-bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
 </div>
 
 <script>
-const companyId = 1;
+// ========== URL PARSING ==========
+// Supports: 
+//   /avatar/{company_id}/{channel_id} - new avatar format
+//   /w/{company_id}/{channel_id} - classic standalone format
+//   /avatar/ - default company 1
+const pathParts = window.location.pathname.split('/').filter(p => p);
+let companyId = '1';
+let channelId = null;
+
+if (pathParts[0] === 'avatar' && pathParts.length >= 2) {
+    // /avatar/1/2 format
+    companyId = pathParts[1];
+    channelId = pathParts[2] || null;
+} else if (pathParts[0] === 'w' && pathParts.length >= 2) {
+    // /w/1/2 classic format
+    companyId = pathParts[1];
+    channelId = pathParts[2] || null;
+} else if (pathParts[0] === 'avatar') {
+    // /avatar/ - default company 1
+    companyId = '1';
+}
+
+console.log('🔗 URL parsed: company=' + companyId + ', channel=' + channelId);
+
 const API = '/sales/' + companyId;
 let sessionId = null;
 let visitorId = localStorage.getItem('bizdnaii_vid') || 'v_' + Math.random().toString(36).substr(2, 9);
@@ -121,15 +147,74 @@ localStorage.setItem('bizdnaii_vid', visitorId);
 
 const langMap = { ru: 'ru', en: 'en', kz: 'kz', ky: 'ky', uz: 'uz', uk: 'uk' };
 let companyDescriptions = {};
+let customGreetings = {};
 let currentLang = 'ru';
 
-const translations = {
+const defaultTranslations = {
   chatButtonStart: { ru: '💬 Начать Диалог', en: '💬 Start Chat', kz: '💬 Диалог бастау', ky: '💬 Диалог баштоо', uz: '💬 Suhbatni boshlash', uk: '💬 Почати Діалог' },
   chatButtonClose: { ru: '✕ Закрыть', en: '✕ Close', kz: '✕ Жабу', ky: '✕ Жабуу', uz: '✕ Yopish', uk: '✕ Закрити' },
   placeholder: { ru: 'Сообщение...', en: 'Message...', kz: 'Хабарлама...', ky: 'Билдирүү...', uz: 'Xabar...', uk: 'Повідомлення...' },
-  greeting: { ru: 'Здравствуйте! Я ваш AI-помощник. Чем могу помочь?', en: 'Hello! I am your AI assistant. How can I help?', kz: 'Сәлеметсіз бе! Мен сіздің AI көмекшісімін. Қалай көмектесе аламын?', ky: 'Салам! Мен сиздин AI жардамчыңызмын. Кантип жардам бере алам?', uz: 'Salom! Men sizning AI yordamchingizman. Qanday yordam bera olaman?', uk: 'Вітаю! Я ваш AI-помічник. Чим можу допомогти?' }
+  defaultGreeting: { 
+    ru: 'Здравствуйте! Я ваш AI-помощник. Чем могу помочь?', 
+    en: 'Hello! I am your AI assistant. How can I help?', 
+    kz: 'Сәлеметсіз бе! Мен сіздің AI көмекшісімін. Қалай көмектесе аламын?', 
+    ky: 'Салам! Мен сиздин AI жардамчыңызмын. Кантип жардам бере алам?', 
+    uz: 'Salom! Men sizning AI yordamchingizman. Qanday yordam bera olaman?', 
+    uk: 'Вітаю! Я ваш AI-помічник. Чим можу допомогти?' 
+  }
 };
 
+// ========== LOAD WIDGET CONFIG (if channel specified) ==========
+async function loadWidgetConfig() {
+    if (channelId) {
+        try {
+            const response = await fetch('/sales/companies/' + companyId + '/widgets/' + channelId);
+            if (response.status === 404) {
+                show404Error();
+                return false;
+            }
+            const data = await response.json();
+            console.log('📦 Widget config loaded:', data);
+            
+            // Load custom greetings for this widget
+            if (data.greetings) {
+                customGreetings = data.greetings;
+            }
+            if (data.greeting_message) {
+                // Single greeting for all languages
+                customGreetings.default = data.greeting_message;
+            }
+            return true;
+        } catch (e) {
+            console.log('⚠️ Widget config not found, using defaults');
+            return true;
+        }
+    }
+    return true;
+}
+
+function show404Error() {
+    document.getElementById('main-container').innerHTML = `
+        <div class="error-page">
+            <h1>404</h1>
+            <p>Виджет не найден</p>
+            <p style="margin-top: 10px; font-size: 14px; opacity: 0.6;">Widget not found</p>
+        </div>
+    `;
+}
+
+function getGreeting() {
+    // Priority: customGreetings[lang] > customGreetings.default > defaultTranslations
+    if (customGreetings[currentLang]) {
+        return customGreetings[currentLang];
+    }
+    if (customGreetings.default) {
+        return customGreetings.default;
+    }
+    return defaultTranslations.defaultGreeting[currentLang] || defaultTranslations.defaultGreeting.ru;
+}
+
+// ========== LOAD COMPANY INFO ==========
 fetch(API + '/company-info')
   .then(r => r.json())
   .then(data => {
@@ -151,14 +236,15 @@ function updateDescription() {
 }
 
 function updateChatButton(isOpen) {
-  const text = isOpen ? translations.chatButtonClose[currentLang] : translations.chatButtonStart[currentLang];
+  const text = isOpen ? defaultTranslations.chatButtonClose[currentLang] : defaultTranslations.chatButtonStart[currentLang];
   chatButtonText.textContent = text;
 }
 
 function updatePlaceholder() {
-  document.getElementById('user-input').placeholder = translations.placeholder[currentLang] || 'Сообщение...';
+  document.getElementById('user-input').placeholder = defaultTranslations.placeholder[currentLang] || 'Сообщение...';
 }
 
+// ========== AVATAR CONTROLLER ==========
 class AvatarController {
   constructor() {
     this.video = document.getElementById('avatar-video');
@@ -172,14 +258,16 @@ class AvatarController {
     this.scalePhase = 0;
     this.animationFrameId = null;
     
+    // Video paths - use absolute paths for /w/ routes
+    const videoBase = '/avatar/videos/';
     this.videos = {
-      greeting: 'videos/greeting.mp4',
-      waiting_call: 'videos/waiting_call.mp4',
-      waiting_blink: 'videos/waiting_blink.mp4',
-      thinking: 'videos/thinking.mp4',
-      confused: 'videos/confused.mp4',
-      speaking: 'videos/speaking.mp4',
-      thanking: 'videos/thanking.mp4'
+      greeting: videoBase + 'greeting.mp4',
+      waiting_call: videoBase + 'waiting_call.mp4',
+      waiting_blink: videoBase + 'waiting_blink.mp4',
+      thinking: videoBase + 'thinking.mp4',
+      confused: videoBase + 'confused.mp4',
+      speaking: videoBase + 'speaking.mp4',
+      thanking: videoBase + 'thanking.mp4'
     };
     
     this.stateLabels = {
@@ -212,6 +300,7 @@ class AvatarController {
   
   setState(newState) {
     this.currentState = newState;
+    this.playVoice(newState);
     this.updateStateBadge();
     switch(newState) {
       case 'greeting': this.loadVideo('greeting'); this.video.loop = false; break;
@@ -336,8 +425,22 @@ class AvatarController {
   onContactReceived() {
     this.setState('thanking');
   }
+
+  // Voice playback for states
+  playVoice(state) {
+    const lang = this.language || 'ru';
+    const audioMap = { greeting: 'hello', thinking: 'thinking', speaking: 'speaking', waiting: 'waiting' };
+    const audioName = audioMap[state];
+    if (!audioName) return;
+    if (this.currentAudio) { this.currentAudio.pause(); }
+    this.currentAudio = new Audio('/avatar/audio/voice/' + audioName + '_' + lang + '.mp3');
+    this.currentAudio.volume = 0.7;
+    this.currentAudio.play().catch(e => {});
+  }
+
 }
 
+// ========== CHAT UI ==========
 class ChatUI {
   constructor(avatar) {
     this.avatar = avatar;
@@ -395,7 +498,7 @@ class ChatUI {
     this.userInput.focus();
     if(!sessionId){
       await this.startSession();
-      this.addMsg(translations.greeting[currentLang],'bot');
+      this.addMsg(getGreeting(),'bot');
     }
   }
   
@@ -416,9 +519,10 @@ class ChatUI {
           message:'start_session',
           user_id:visitorId,
           username:'Гость',
-          source:'avatar_widget',
+          source: channelId || 'avatar',
           new_session:true,
-          language:langMap[currentLang] || 'ru'
+          language:langMap[currentLang] || 'ru',
+          channel_id: channelId
         })
       });
       const d=await r.json();
@@ -431,7 +535,7 @@ class ChatUI {
     localStorage.setItem('bizdnaii_vid',visitorId);
     sessionId=null;
     this.chatMessages.innerHTML='';
-    this.addMsg(translations.greeting[currentLang],'bot');
+    this.addMsg(getGreeting(),'bot');
   }
   
   async send(){
@@ -450,9 +554,10 @@ class ChatUI {
           message:text,
           user_id:visitorId,
           username:'Гость',
-          source:'avatar_widget',
+          source: channelId || 'avatar',
           session_id:sessionId,
-          language:langMap[currentLang] || 'ru'
+          language:langMap[currentLang] || 'ru',
+          channel_id: channelId
         })
       });
       const d=await r.json();
@@ -487,7 +592,8 @@ class ChatUI {
         formData.append('session_id', sessionId || 'new');
         formData.append('user_id', visitorId);
         formData.append('language', langMap[currentLang] || 'ru');
-        formData.append('source', 'avatar_widget');
+        formData.append('source', channelId || 'avatar');
+        if (channelId) formData.append('channel_id', channelId);
         
         this.addMsg('🎤 Голосовое...', 'user');
         this.showTyping();
@@ -544,6 +650,7 @@ class ChatUI {
   hideTyping(){this.typingIndicator.classList.remove('active');}
 }
 
+// ========== NEURAL NETWORK BACKGROUND ==========
 const c=document.getElementById('neural-bg');
 const ctx=c.getContext('2d');
 let w,h,lines=[];
@@ -580,9 +687,17 @@ function draw(){
 }
 draw();
 
-const avatar=new AvatarController();
-const chat=new ChatUI(avatar);
-console.log('🎭 Avatar initialized');
+// ========== INIT ==========
+async function init() {
+    const widgetOk = await loadWidgetConfig();
+    if (!widgetOk) return;
+    
+    const avatar = new AvatarController();
+    const chat = new ChatUI(avatar);
+    console.log('🎭 Avatar initialized for company=' + companyId + ', channel=' + channelId);
+}
+
+init();
 </script>
 </body>
 </html>
