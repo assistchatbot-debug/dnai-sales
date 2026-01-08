@@ -531,6 +531,10 @@ class ChatUI {
     this.avatar.onWidgetOpen();
     updateChatButton(true);
     this.userInput.focus();
+    // Scroll to input field
+    setTimeout(() => {
+      this.userInput.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }, 300);
     if(!sessionId){
       await this.startSession();
       this.addMsg(getGreeting(),'bot');
@@ -679,6 +683,8 @@ class ChatUI {
     msg.textContent=text;
     this.chatMessages.appendChild(msg);
     this.chatMessages.scrollTop=this.chatMessages.scrollHeight;
+    // Scroll page to keep input visible
+    setTimeout(() => this.userInput.scrollIntoView({ behavior: 'smooth', block: 'end' }), 100);
   }
   
   showTyping(){this.typingIndicator.classList.add('active');}
