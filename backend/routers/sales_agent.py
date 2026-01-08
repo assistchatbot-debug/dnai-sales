@@ -1395,6 +1395,7 @@ async def get_pricing_html(db: AsyncSession = Depends(get_db)):
                 <li>👥 {t.leads_limit} <span data-ru="лидов/мес" data-en="leads/mo">лидов/мес</span></li>
                 <li>🌐 {t.web_widgets_limit} <span data-ru="веб-виджет" data-en="web widget">веб-виджет</span></li>
                 <li>📱 {t.social_widgets_limit} <span data-ru="соц. виджетов" data-en="social widgets">соц. виджетов</span></li>
+                <li>🎭 {t.avatar_limit} <span data-ru="{'аватар' if t.avatar_limit == 1 else 'аватаров'}" data-en="{'avatar' if t.avatar_limit == 1 else 'avatars'}">{'аватар' if t.avatar_limit == 1 else 'аватаров'}</span></li>
             </ul>
         </div>"""
     
@@ -1403,13 +1404,15 @@ async def get_pricing_html(db: AsyncSession = Depends(get_db)):
         'basic': ('🎯 Базовый', '🎯 Basic'),
         'standard': ('📊 Стандарт', '📊 Standard'),
         'advanced': ('⚡ Продвинутый', '⚡ Advanced'),
-        'custom': ('🎨 Кастомный', '🎨 Custom')
+        'custom': ('🎨 Кастомный', '🎨 Custom'),
+        'avatar': ('🎭 Аватар', '🎭 Avatar')
     }
     ai_features = {
         'basic': ('Стандартное приветствие, базовая квалификация, сбор контактов', 'Standard greeting, basic qualification, contact collection'),
         'standard': ('Персонализация, расширенная квалификация, FAQ', 'Personalization, extended qualification, FAQ training'),
         'advanced': ('База знаний, умная квалификация, сценарии', 'Knowledge base, smart qualification, dialog scripts'),
-        'custom': ('Полная настройка', 'Full customization, CRM integration, 24/7 support')
+        'custom': ('Полная настройка', 'Full customization, CRM integration, 24/7 support'),
+        'avatar': ('Подключение аватаров', 'Avatar setup & configuration')
     }
     
     # Generate package rows

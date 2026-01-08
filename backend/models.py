@@ -258,6 +258,7 @@ class TierSettings(Base):
     leads_limit = Column(Integer, nullable=False)
     web_widgets_limit = Column(Integer, nullable=False)
     social_widgets_limit = Column(Integer, nullable=False)
+    avatar_limit = Column(Integer, default=0)  # PRO=1, ENTERPRISE=5
     features_ru = Column(ARRAY(Text), default=[])
     ai_setup_level = Column(String(20), default='basic')
     support_level = Column(String(20), default='email')
