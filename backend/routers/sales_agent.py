@@ -606,6 +606,12 @@ async def upsert_company(data: dict, db: AsyncSession = Depends(get_db)):
     if 'ai_api_key' in data:
         company.ai_api_key = data['ai_api_key']
         logging.info(f'🔑 Updated ai_api_key for company {company_id}')
+    if 'web_avatar_enabled' in data:
+        company.web_avatar_enabled = bool(data['web_avatar_enabled'])
+        logging.info(f'🎭 Updated web_avatar_enabled for company {company_id}: {data["web_avatar_enabled"]}')
+    if 'avatar_limit' in data:
+        company.avatar_limit = int(data['avatar_limit'])
+        logging.info(f'🎭 Updated avatar_limit for company {company_id}: {data["avatar_limit"]}')
     
     await db.commit()
     await db.refresh(company)

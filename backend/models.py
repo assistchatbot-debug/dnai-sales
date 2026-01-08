@@ -42,6 +42,7 @@ class Company(Base):
     tier = Column(String, default="free")  # free, basic, pro, enterprise
     tier_expiry = Column(DateTime(timezone=True), nullable=True)
     ai_package = Column(String(20), default='basic')
+    web_avatar_enabled = Column(Boolean, default=False)  # Web avatar widget enabled
     leads_used_this_month = Column(Integer, default=0)
     leads_reset_date = Column(DateTime, nullable=True)
     

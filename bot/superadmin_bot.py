@@ -32,6 +32,8 @@ dp = Dispatcher()
 class CompanyFlow(StatesGroup):
     viewing_list = State()
     selecting_for_edit = State()
+    selecting_for_web_avatar = State()
+    entering_company_avatar_limit = State()
     editing_name = State()
     editing_bin = State()
     editing_phone = State()
@@ -53,7 +55,7 @@ def get_main_keyboard():
     return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📊 Компании"), KeyboardButton(text="📈 Лиды")],[KeyboardButton(text="💳 Тарифы"), KeyboardButton(text="⚙️ Статус")],[KeyboardButton(text="🌐 Виджет"), KeyboardButton(text="🏠 Меню")]], resize_keyboard=True)
 
 def get_company_menu_keyboard():
-    return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="➕ Создать компанию"), KeyboardButton(text="✏️ Редактировать компанию")],[KeyboardButton(text="📋 Список компаний")],[KeyboardButton(text="🎯 Установить тариф"), KeyboardButton(text="⏰ Продлить тариф")],[KeyboardButton(text="◀️ Назад")]], resize_keyboard=True)
+    return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="➕ Создать компанию"), KeyboardButton(text="✏️ Редактировать компанию")],[KeyboardButton(text="📋 Список компаний"), KeyboardButton(text="🎭 Web Avatar")],[KeyboardButton(text="🎯 Установить тариф"), KeyboardButton(text="⏰ Продлить тариф")],[KeyboardButton(text="◀️ Назад")]], resize_keyboard=True)
 
 def get_temp_icon(temp):
     t = str(temp).lower()
@@ -249,7 +251,8 @@ async def btn_companies(message: types.Message, state: FSMContext):
                             has_bot = '🤖' if c.get('bot_token') else '❌'
                             tier = c.get('tier', 'free')
                             tier_icon = '💎' if tier != 'free' else '🆓'
-                            text += f"<b>ID: {cid}</b> — {name} {has_bot} {tier_icon}{tier}\n"
+                            web_avatar = '🎭' if c.get('web_avatar_enabled') else ''
+                            text += f"<b>ID: {cid}</b> — {name} {has_bot} {tier_icon}{tier} {web_avatar}\n"
                     await message.answer(text, parse_mode='HTML', reply_markup=get_company_menu_keyboard())
                     await state.set_state(CompanyFlow.viewing_list)
     except Exception as e:
@@ -494,6 +497,67 @@ async def btn_status(message: types.Message):
     except: pass
     
     await message.answer('\n'.join(status), parse_mode='HTML')
+
+@dp.message(F.text == "🎭 Web Avatar")
+async def start_web_avatar(message: types.Message, state: FSMContext):
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f'{API_BASE_URL}/sales/companies/all', timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                if resp.status == 200:
+                    companies = await resp.json()
+                    if not companies:
+                        await message.answer("📋 Нет компаний")
+                        return
+                    text = "🎭 <b>Web Avatar</b>\n\nВыберите компанию:\n\n"
+                    for i, c in enumerate(companies, 1):
+                        enabled = '✅' if c.get('web_avatar_enabled') else '❌'
+                        text += f"{i}. {c['name']} — {enabled}\n"
+                    await state.update_data(companies=companies)
+                    await state.set_state(CompanyFlow.selecting_for_web_avatar)
+                    await message.answer(text, parse_mode='HTML')
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {str(e)[:40]}")
+
+@dp.message(CompanyFlow.selecting_for_web_avatar)
+async def select_web_avatar(message: types.Message, state: FSMContext):
+    try:
+        num = int(message.text.strip()) - 1
+        data = await state.get_data()
+        companies = data.get('companies', [])
+        if 0 <= num < len(companies):
+            company = companies[num]
+            new_value = not company.get('web_avatar_enabled', False)
+            async with aiohttp.ClientSession() as session:
+                await session.post(f'{API_BASE_URL}/sales/company/upsert', json={'id': company['id'], 'web_avatar_enabled': new_value})
+            status = '✅ Включён' if new_value else '❌ Выключен'
+            await message.answer(f"🎭 Web Avatar для {company['name']}: {status}")
+            # Ask for avatar limit
+            current_limit = company.get('avatar_limit') or 'по тарифу'
+            await state.update_data(company_id=company['id'], company_name=company['name'])
+            await state.set_state(CompanyFlow.entering_company_avatar_limit)
+            await message.answer(f"🎭 Лимит аватаров для {company['name']}\n\nТекущий: {current_limit}\n\nВведите новый лимит (число) или '.' для пропуска:")
+        else:
+            await message.answer("❌ Неверный номер")
+            await state.clear()
+    except ValueError:
+        await message.answer("❌ Введите номер")
+        await state.clear()
+
+@dp.message(CompanyFlow.entering_company_avatar_limit)
+async def enter_company_avatar_limit(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    if message.text.strip() != '.':
+        try:
+            limit = int(message.text.strip())
+            async with aiohttp.ClientSession() as session:
+                await session.post(f'{API_BASE_URL}/sales/company/upsert', json={'id': data['company_id'], 'avatar_limit': limit})
+            await message.answer(f"✅ Лимит аватаров для {data['company_name']} = {limit}", reply_markup=get_company_menu_keyboard())
+        except ValueError:
+            await message.answer("❌ Введите число или '.'")
+            return
+    else:
+        await message.answer("✅ Лимит не изменён", reply_markup=get_company_menu_keyboard())
+    await state.clear()
 
 @dp.message(F.text == "🎯 Установить тариф")
 async def start_set_tier(message: types.Message, state: FSMContext):
