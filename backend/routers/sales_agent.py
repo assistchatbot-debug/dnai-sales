@@ -1164,8 +1164,49 @@ async def list_widgets(company_id:int,db:AsyncSession=Depends(get_db)):
 
 @router.post("/companies/{company_id}/widgets")
 async def create_widget(company_id:int,data:dict,db:AsyncSession=Depends(get_db)):
+    from sqlalchemy import func as sqlfunc
+    from models import TierSettings
+    
     ch=transliterate_to_english(data.get("channel_name",""))
     if not ch:raise HTTPException(400,"channel_name required")
+    
+    widget_type = data.get("widget_type", "classic")
+    if widget_type == "avatar":
+        count_q = await db.execute(select(sqlfunc.count(SocialWidget.id)).where(SocialWidget.company_id==company_id, SocialWidget.widget_type=="avatar", SocialWidget.is_active==True))
+        current = count_q.scalar() or 0
+        
+        comp_q = await db.execute(select(Company).where(Company.id==company_id))
+        comp = comp_q.scalars().first()
+        
+        limit = 0
+        if comp:
+            comp_limit = getattr(comp, 'avatar_limit', None)
+            if comp_limit is not None:
+                limit = comp_limit
+            elif hasattr(comp, 'tier') and comp.tier:
+                tier_q = await db.execute(select(TierSettings).where(TierSettings.tier==comp.tier))
+                tier = tier_q.scalars().first()
+                limit = getattr(tier, 'avatar_limit', 0) if tier else 0
+        
+        if current >= limit:
+            raise HTTPException(400, f"Лимит аватаров ({limit}) достигнут. Обратитесь в поддержку для увеличения.")
+    else:
+        # Check social widgets limit for classic
+        count_q = await db.execute(select(sqlfunc.count(SocialWidget.id)).where(SocialWidget.company_id==company_id, SocialWidget.is_active==True))
+        current = count_q.scalar() or 0
+        
+        comp_q = await db.execute(select(Company).where(Company.id==company_id))
+        comp = comp_q.scalars().first()
+        
+        limit = 0
+        if comp and hasattr(comp, 'tier') and comp.tier:
+            tier_q = await db.execute(select(TierSettings).where(TierSettings.tier==comp.tier))
+            tier = tier_q.scalars().first()
+            limit = tier.social_widgets_limit if tier else 0
+        
+        if current >= limit:
+            raise HTTPException(400, f"Лимит соц. виджетов ({limit}) достигнут. Обновите тариф.")
+    
     # Allow multiple widgets per channel - no uniqueness check
     w=SocialWidget(company_id=company_id,channel_name=ch,greeting_message=data.get("greeting_message","Здравствуйте!"),widget_type=data.get("widget_type","classic"),is_active=True)
     # Auto-translate greeting
