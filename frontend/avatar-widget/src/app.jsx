@@ -1,6 +1,6 @@
 /**
- * BizDNAii Avatar Widget v1.3
- * Fixed: text status, video height, mobile responsive
+ * BizDNAii Avatar Widget v2.0
+ * Video preview instead of button
  */
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { X, Send, Mic, Square } from 'lucide-preact';
@@ -18,12 +18,18 @@ export function App() {
   const [companyLogo, setCompanyLogo] = useState('https://bizdnai.com/logo.png');
   const [companyName, setCompanyName] = useState('BizDNAi');
   const [companyId, setCompanyId] = useState(null);
-  const [showTooltip, setShowTooltip] = useState(false);
   const [avatarState, setAvatarState] = useState('waiting_blink');
   
+  // Preview video refs (for closed state)
+  const previewVideoRef = useRef(null);
+  const previewCanvasRef = useRef(null);
+  const previewAnimRef = useRef(null);
+  
+  // Main video refs (for open state)
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const animationRef = useRef(null);
+  
   const audioRef = useRef(null);
   const waitingTimerRef = useRef(null);
   const waitingCountRef = useRef(0);
@@ -38,16 +44,15 @@ export function App() {
   const chunksRef = useRef([]);
   
   const texts = {
-    ru: { placeholder: 'Сообщение...', error: 'Ошибка сервера', online: 'Online', tooltip: 'Напишите нам...', greeting: 'Привет! Чем помочь?' },
-    en: { placeholder: 'Message...', error: 'Server error', online: 'Online', tooltip: 'Write to us...', greeting: 'Hello! How can I help?' },
-    kz: { placeholder: 'Хабарлама...', error: 'Сервер қатесі', online: 'Онлайн', tooltip: 'Бізге жазыңыз...', greeting: 'Сәлем! Көмек керек пе?' },
-    ky: { placeholder: 'Билдирүү...', error: 'Сервер катасы', online: 'Онлайн', tooltip: 'Бизге жазыңыз...', greeting: 'Салам! Жардам керекпи?' },
-    uz: { placeholder: 'Xabar...', error: 'Server xatosi', online: 'Onlayn', tooltip: 'Bizga yozing...', greeting: 'Salom! Yordam kerakmi?' },
-    uk: { placeholder: 'Повідомлення...', error: 'Помилка сервера', online: 'Онлайн', tooltip: 'Напишіть нам...', greeting: 'Привіт! Чим допомогти?' }
+    ru: { placeholder: 'Сообщение...', error: 'Ошибка сервера', online: 'Online', greeting: 'Привет! Чем помочь?' },
+    en: { placeholder: 'Message...', error: 'Server error', online: 'Online', greeting: 'Hello! How can I help?' },
+    kz: { placeholder: 'Хабарлама...', error: 'Сервер қатесі', online: 'Онлайн', greeting: 'Сәлем! Көмек керек пе?' },
+    ky: { placeholder: 'Билдирүү...', error: 'Сервер катасы', online: 'Онлайн', greeting: 'Салам! Жардам керекпи?' },
+    uz: { placeholder: 'Xabar...', error: 'Server xatosi', online: 'Onlayn', greeting: 'Salom! Yordam kerakmi?' },
+    uk: { placeholder: 'Повідомлення...', error: 'Помилка сервера', online: 'Онлайн', greeting: 'Привіт! Чим допомогти?' }
   };
   const t = texts[language] || texts.ru;
 
-  // State labels - TEXT
   const stateLabels = {
     ru: { waiting_blink: 'Готов', greeting: 'Приветствую', waiting_call: 'Жду', thinking: 'Думаю...', speaking: 'Говорю', confused: 'Не понял', thanking: 'Спасибо!' },
     en: { waiting_blink: 'Ready', greeting: 'Hello', waiting_call: 'Waiting', thinking: 'Thinking...', speaking: 'Speaking', confused: 'Confused', thanking: 'Thanks!' },
@@ -88,13 +93,7 @@ export function App() {
     if (waitingTimerRef.current) { clearTimeout(waitingTimerRef.current); waitingTimerRef.current = null; }
   };
 
-  useEffect(() => {
-    if (isOpen) { setShowTooltip(false); return; }
-    const t1 = setTimeout(() => setShowTooltip(true), 500);
-    const t2 = setInterval(() => { setShowTooltip(true); setTimeout(() => setShowTooltip(false), 5000); }, 8000);
-    return () => { clearTimeout(t1); clearInterval(t2); };
-  }, [isOpen]);
-
+  // Load config
   useEffect(() => {
     localStorage.setItem('bizdnaii_vid', visitorId);
     fetch('https://bizdnai.com/sales/widget/config')
@@ -108,23 +107,23 @@ export function App() {
       .catch(() => setMessages([{ id: 1, text: t.greeting, sender: 'bot' }]));
   }, [language]);
 
-  const drawFrame = useCallback(() => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
+  // Draw frame helper
+  const drawVideoFrame = (video, canvas, anim, phase) => {
     if (!video || !canvas) return;
     const ctx = canvas.getContext('2d');
     
     if (!video.paused && !video.ended && video.videoWidth > 0) {
       const vw = video.videoWidth, vh = video.videoHeight;
       const cw = canvas.width, ch = canvas.height;
-      const scale = Math.max(cw/vw, ch/vh) * (1 + Math.sin(phaseRef.current) * 0.01);
-      phaseRef.current += 0.02;
+      const scale = Math.max(cw/vw, ch/vh) * (1 + Math.sin(phase.current) * 0.01);
+      phase.current += 0.02;
       const w = vw * scale, h = vh * scale;
       const x = (cw - w) / 2, y = (ch - h) / 2;
       
       ctx.clearRect(0, 0, cw, ch);
       ctx.drawImage(video, x, y, w, h);
       
+      // Fade edges
       ctx.save();
       ctx.globalCompositeOperation = 'destination-in';
       const g = ctx.createLinearGradient(0, 0, cw, 0);
@@ -136,12 +135,41 @@ export function App() {
       ctx.fillRect(0, 0, cw, ch);
       ctx.restore();
     }
-    animationRef.current = requestAnimationFrame(drawFrame);
-  }, []);
+    anim.current = requestAnimationFrame(() => drawVideoFrame(video, canvas, anim, phase));
+  };
 
+  // Preview video (always playing when closed)
   useEffect(() => {
+    if (isOpen) {
+      if (previewAnimRef.current) cancelAnimationFrame(previewAnimRef.current);
+      return;
+    }
+    const video = previewVideoRef.current;
+    const canvas = previewCanvasRef.current;
+    if (!video || !canvas) return;
+    
+    video.src = VIDEO_BASE + 'waiting_blink.mp4';
+    video.loop = true;
+    video.load();
+    video.play().catch(() => {});
+    
+    const phase = { current: 0 };
+    const draw = () => {
+      drawVideoFrame(video, canvas, previewAnimRef, phase);
+    };
+    video.addEventListener('loadeddata', draw);
+    
+    return () => {
+      if (previewAnimRef.current) cancelAnimationFrame(previewAnimRef.current);
+    };
+  }, [isOpen]);
+
+  // Main video (when open)
+  useEffect(() => {
+    if (!isOpen) return;
     const video = videoRef.current;
-    if (!video) return;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
     
     const videos = { greeting: 'greeting.mp4', waiting_call: 'waiting_call.mp4', waiting_blink: 'waiting_blink.mp4', thinking: 'thinking.mp4', confused: 'confused.mp4', speaking: 'speaking.mp4', thanking: 'thanking.mp4' };
     
@@ -151,7 +179,9 @@ export function App() {
     video.play().catch(() => {});
     
     if (animationRef.current) cancelAnimationFrame(animationRef.current);
-    drawFrame();
+    const phase = { current: phaseRef.current };
+    const draw = () => drawVideoFrame(video, canvas, animationRef, phase);
+    video.addEventListener('loadeddata', draw);
     
     const onEnded = () => {
       if (avatarState === 'greeting') setAvatarState('waiting_call');
@@ -159,12 +189,15 @@ export function App() {
       else if (['confused', 'thanking'].includes(avatarState)) setAvatarState('waiting_blink');
     };
     video.addEventListener('ended', onEnded);
-    return () => video.removeEventListener('ended', onEnded);
-  }, [avatarState, drawFrame]);
+    
+    return () => {
+      video.removeEventListener('ended', onEnded);
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    };
+  }, [isOpen, avatarState]);
 
   const handleOpen = () => {
     setIsOpen(true);
-    // Reset avatar to trigger video reload
     setAvatarState('waiting_blink');
     setTimeout(() => {
       setAvatarState('greeting');
@@ -249,25 +282,25 @@ export function App() {
   const getStateLabel = () => (stateLabels[language] || stateLabels.ru)[avatarState] || avatarState;
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 font-sans" style={{ right: '16px' }}>
+    <div className="fixed bottom-4 right-4 z-50 font-sans">
       <audio ref={audioRef} />
       
-      {isOpen && (
-        <div style={{ 
-          width: 'min(384px, calc(100vw - 32px))', 
-          height: 'min(700px, calc(100vh - 100px))',
-          marginBottom: '16px'
-        }} className="bg-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-700 mobile-fullscreen">
-          {/* Avatar - increased height 240px */}
+      {isOpen ? (
+        <div style={{ width: 'min(384px, calc(100vw - 32px))', height: 'min(720px, calc(100vh - 100px))', marginBottom: '16px' }} className="bg-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-700">
+          {/* Avatar with close button */}
           <div className="relative bg-gradient-to-b from-slate-900 to-slate-800">
+            {/* Close button top right */}
+            <button onClick={() => { setIsOpen(false); clearWaitingTimer(); }} className="absolute top-2 right-2 z-10 text-white hover:bg-white/20 p-1.5 rounded-full bg-black/30"><X size={18} /></button>
+            
             <div className="relative w-full flex justify-center" style={{ height: '265px' }}>
               <video ref={videoRef} className="hidden" muted playsInline />
               <canvas ref={canvasRef} width="220" height="265" className="rounded-lg" style={{ background: '#1a1a1a' }} />
-              <div className="absolute top-2 right-2 px-2 py-1 bg-cyan-500/40 backdrop-blur rounded-full text-xs text-white font-medium">{getStateLabel()}</div>
+              {/* Status left side */}
+              <div className="absolute top-2 left-2 px-2 py-1 bg-cyan-500/40 backdrop-blur rounded-full text-xs text-white font-medium">{getStateLabel()}</div>
             </div>
           </div>
           
-          {/* Header with dropdown language */}
+          {/* Header */}
           <div className="bg-indigo-600 px-4 py-3 flex justify-between items-center">
             <div className="flex items-center gap-3">
               <img src={companyLogo} className="w-10 h-10 rounded-full" alt="" />
@@ -277,16 +310,10 @@ export function App() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <select 
-                value={language} 
-                onChange={(e) => changeLanguage(e.target.value)}
-                className="bg-indigo-500/30 border border-indigo-400/40 text-white text-sm rounded-lg px-2 py-1 focus:outline-none cursor-pointer"
-              >
-                {Object.entries(LANG_LABELS).map(([code, label]) => (
-                  <option key={code} value={code}>{label}</option>
-                ))}
+              <select value={language} onChange={(e) => changeLanguage(e.target.value)} className="bg-indigo-500/30 border border-indigo-400/40 text-white text-sm rounded-lg px-2 py-1 focus:outline-none cursor-pointer">
+                {Object.entries(LANG_LABELS).map(([code, label]) => (<option key={code} value={code}>{label}</option>))}
               </select>
-              <button onClick={() => { setIsOpen(false); clearWaitingTimer(); }} className="text-white hover:bg-white/10 p-1 rounded"><X size={20} /></button>
+
             </div>
           </div>
           
@@ -297,15 +324,7 @@ export function App() {
                 <div className={`max-w-[80%] p-3 rounded-2xl text-sm whitespace-pre-line text-white ${m.sender==='user'?'bg-indigo-600':'bg-slate-700'} ${m.isError?'bg-red-500':''}`}>{m.text}</div>
               </div>
             ))}
-            {isTyping && (
-              <div className="flex justify-start">
-                <div className="bg-slate-700 p-4 rounded-2xl flex gap-1">
-                  <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce"/>
-                  <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{animationDelay:'0.2s'}}/>
-                  <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{animationDelay:'0.4s'}}/>
-                </div>
-              </div>
-            )}
+            {isTyping && (<div className="flex justify-start"><div className="bg-slate-700 p-4 rounded-2xl flex gap-1"><div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce"/><div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{animationDelay:'0.2s'}}/><div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" style={{animationDelay:'0.4s'}}/></div></div>)}
             <div ref={messagesEndRef}/>
           </div>
           
@@ -316,37 +335,42 @@ export function App() {
             <button onPointerDown={e=>{e.preventDefault();startRecording();}} onPointerUp={e=>{e.preventDefault();stopRecording();}} className={`p-2.5 rounded-full ${isRecording?'bg-red-500 animate-pulse':'bg-slate-700 hover:bg-slate-600'}`} style={{touchAction:'none'}}>{isRecording?<Square size={20} className="text-white"/>:<Mic size={20} className="text-white"/>}</button>
           </div>
         </div>
-      )}
-      
-      {/* Floating button - responsive size */}
-      <div className="relative">
-        <div className={`absolute bottom-full right-0 mb-2 whitespace-nowrap bg-white text-slate-800 px-4 py-2 rounded-full shadow-lg text-sm font-medium transition-all duration-500 ${!isOpen&&showTooltip?'opacity-100 translate-y-0':'opacity-0 translate-y-2 pointer-events-none'}`}>
-          {t.tooltip}
-          <div className="absolute bottom-0 right-6 transform translate-y-1/2 rotate-45 w-2 h-2 bg-white"></div>
+      ) : (
+        /* VIDEO PREVIEW with language selector */
+        <div className="flex flex-col items-end gap-1">
+          {/* Language dropdown above video */}
+          <select 
+            value={language}
+            onChange={(e) => { 
+              const newLang = e.target.value; 
+              setLanguage(newLang); 
+              localStorage.setItem('bizdnaii_widget_lang', newLang); 
+              setTimeout(() => playVoice('hello', newLang), 100);
+              handleOpen(); 
+            }}
+            onBlur={() => handleOpen()}
+            className="w-[140px] bg-slate-800/90 text-white text-xs rounded-lg px-2 py-1.5 focus:outline-none cursor-pointer"
+            style={{ boxShadow: '0 0 10px rgba(0, 212, 255, 0.6), 0 0 20px rgba(0, 212, 255, 0.3)', border: '1px solid rgba(0, 212, 255, 0.5)' }}
+          >
+            
+            {Object.entries(LANG_LABELS).map(([code, label]) => (<option key={code} value={code}>{label}</option>))}
+          </select>
+          
+          {/* Video preview */}
+          <div className="cursor-pointer relative" style={{ width: '140px', height: '180px' }} onClick={handleOpen}>
+            <video ref={previewVideoRef} className="hidden" muted playsInline />
+            <canvas ref={previewCanvasRef} width="140" height="180" className="rounded-2xl shadow-2xl" style={{ background: '#1a1a1a' }} />
+            <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 px-3 py-1 bg-gradient-to-r from-cyan-500 to-purple-500 rounded-full text-xs text-white font-medium whitespace-nowrap shadow-lg">
+              💬 Написать
+            </div>
+            <div className="absolute inset-0 rounded-2xl border-2 border-cyan-400 opacity-50 animate-pulse pointer-events-none"/>
+          </div>
         </div>
-        <button onClick={()=>isOpen?setIsOpen(false):handleOpen()} style={{ width: '64px', height: '64px' }} className="rounded-full bg-gradient-to-r from-cyan-500 to-purple-500 flex items-center justify-center shadow-2xl relative">
-          {!isOpen&&<span className="absolute inset-0 rounded-full bg-cyan-500 opacity-75" style={{animation:'ping 1.5s cubic-bezier(0,0,0.2,1) infinite'}}/>}
-          <div className="relative z-10">{isOpen?<X size={28} className="text-white"/>:<img src={companyLogo} className="w-8 h-8 rounded-full" alt=""/>}</div>
-        </button>
-      </div>
+      )}
       
       <style>{`
         @keyframes ping{75%,100%{transform:scale(1.8);opacity:0}}
-        select option{background-color:#1e293b;color:white}
-        @media (max-width: 480px) {
-          #bizdnaii-avatar-widget-container > div { 
-            right: 0 !important; 
-            left: 0 !important;
-            bottom: 0 !important;
-          }
-          .mobile-fullscreen {
-            width: 100vw !important;
-            height: calc(100vh - 80px) !important;
-            max-height: none !important;
-            border-radius: 20px 20px 0 0 !important;
-            margin-bottom: 0 !important;
-          }
-        }
+select option{background-color:#1e293b;color:white}
       `}</style>
     </div>
   );
