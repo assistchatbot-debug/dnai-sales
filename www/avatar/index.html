@@ -7,7 +7,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
 body { margin: 0; padding: 0; background-color: #1A1A1A; color: #E5E7EB; }
-canvas#neural-bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; background: #1A1A1A; opacity: 0.3; pointer-events: none; }
+canvas#neural-bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; background: #1A1A1A; opacity: 0.5; pointer-events: none; }
 .container { position: relative; max-width: 500px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 30px 20px; z-index: 1; }
 .header { text-align: center; margin-bottom: 30px; transition: margin-bottom 0.5s ease; }
 .header.minimized { margin-bottom: 15px; }
@@ -715,12 +715,12 @@ function draw(){
     a.x+=a.dx;a.y+=a.dy;
     if(a.x<0||a.x>w)a.dx*=-1;
     if(a.y<0||a.y>h)a.dy*=-1;
-    ctx.beginPath();ctx.arc(a.x,a.y,1.2,0,Math.PI*2);ctx.fillStyle="#00D4FF";ctx.fill();
+    ctx.beginPath();ctx.arc(a.x,a.y,1.5,0,Math.PI*2);ctx.fillStyle="#00D4FF";ctx.fill();
     for(let j=i+1;j<lines.length;j++){
       let b=lines[j],dx=a.x-b.x,dy=a.y-b.y,dist=Math.sqrt(dx*dx+dy*dy);
       if(dist<120){
         ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);
-        ctx.strokeStyle='rgba(0,212,255,'+(1-dist/120)*0.3+')';ctx.lineWidth=1;ctx.stroke();
+        ctx.strokeStyle='rgba(0,212,255,'+(1-dist/120)*0.5+')';ctx.lineWidth=1.3;ctx.stroke();
       }
     }
   }
