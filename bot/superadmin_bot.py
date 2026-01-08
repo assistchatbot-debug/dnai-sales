@@ -83,6 +83,7 @@ async def btn_list_companies(message: types.Message, state: FSMContext):
 class TierEdit(StatesGroup):
     waiting_price = State()
     waiting_leads = State()
+    waiting_avatar_limit = State()
     waiting_ai_price = State()
 
 @dp.message(F.text == "💳 Тарифы")
@@ -100,10 +101,12 @@ async def btn_tiers(message: types.Message, state: FSMContext):
             lines = ["💳 <b>Месячные тарифы</b>", ""]
             buttons = []
             for t in tiers:
-                lines.append(f"<b>{t['name_ru']}</b> — ${t['price_usd']}/мес | {t['leads_limit']} лидов")
+                avatar_limit = t.get('avatar_limit', 0)
+                lines.append(f"<b>{t['name_ru']}</b> — ${t['price_usd']}/мес | {t['leads_limit']} лидов | 🎭{avatar_limit}")
                 buttons.append([
                     InlineKeyboardButton(text=f"💰 {t['tier']}", callback_data=f"tierprice_{t['tier']}"),
-                    InlineKeyboardButton(text=f"👥 {t['tier']}", callback_data=f"tierleads_{t['tier']}")
+                    InlineKeyboardButton(text=f"👥 {t['tier']}", callback_data=f"tierleads_{t['tier']}"),
+                    InlineKeyboardButton(text=f"🎭 {t['tier']}", callback_data=f"tieravatar_{t['tier']}")
                 ])
             
             lines.append("")
@@ -116,7 +119,7 @@ async def btn_tiers(message: types.Message, state: FSMContext):
                 ])
             
             lines.append("")
-            lines.append("<i>💰/👥 — тарифы, 🤖 — AI пакеты</i>")
+            lines.append("<i>💰 цена, 👥 лиды, 🎭 аватары, 🤖 AI пакеты</i>")
             kb = InlineKeyboardMarkup(inline_keyboard=buttons)
             await message.answer("\n".join(lines), parse_mode='HTML', reply_markup=kb)
     except Exception as e:
@@ -136,6 +139,15 @@ async def cb_leads(callback: types.CallbackQuery, state: FSMContext):
     await state.update_data(tier=tier)
     await state.set_state(TierEdit.waiting_leads)
     await callback.message.answer(f"👥 Введите лимит лидов для {tier.upper()} (число):")
+    await callback.answer()
+
+
+@dp.callback_query(F.data.startswith("tieravatar_"))
+async def cb_avatar(callback: types.CallbackQuery, state: FSMContext):
+    tier = callback.data.replace("tieravatar_", "")
+    await state.update_data(tier=tier)
+    await state.set_state(TierEdit.waiting_avatar_limit)
+    await callback.message.answer(f"🎭 Введите лимит аватаров для {tier.upper()} (число):")
     await callback.answer()
 
 
@@ -168,6 +180,20 @@ async def proc_leads(message: types.Message, state: FSMContext):
         async with aiohttp.ClientSession() as session:
             await session.patch(f'{API_BASE_URL}/sales/tiers/{data["tier"]}', json={'leads_limit': limit})
         await message.answer(f"✅ Лимит {data['tier'].upper()} = {limit}/мес", reply_markup=get_main_keyboard())
+    except:
+        await message.answer("❌ Введите число")
+        return
+    await state.clear()
+
+
+@dp.message(TierEdit.waiting_avatar_limit)
+async def proc_avatar_limit(message: types.Message, state: FSMContext):
+    try:
+        limit = int(message.text.strip())
+        data = await state.get_data()
+        async with aiohttp.ClientSession() as session:
+            await session.patch(f'{API_BASE_URL}/sales/tiers/{data["tier"]}', json={'avatar_limit': limit})
+        await message.answer(f"✅ Аватаров {data['tier'].upper()} = {limit}", reply_markup=get_main_keyboard())
     except:
         await message.answer("❌ Введите число")
         return

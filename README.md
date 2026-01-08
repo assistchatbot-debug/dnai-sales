@@ -765,3 +765,25 @@ Manager bot can generate QR codes for standalone widget URLs:
 3. Get 250x250 PNG QR code linking to `https://bizdnai.com/w/{company_id}/{widget_id}`
 
 Useful for printing on business cards, flyers, or displays.
+
+## 🎭 Avatar Widget (January 2026)
+
+### Features
+- **6 languages**: RU, EN, KZ, KY, UZ, UK
+- **Voice**: Hello + Waiting (10s, 30s, 60s timer)
+- **Greeting on language change**
+- **Neural network background**
+
+### Pricing Limits
+- **PRO**: 1 avatar
+- **ENTERPRISE**: 5 avatars
+- Individual company limits via SuperAdmin
+
+### SuperAdmin Bot
+- Edit avatar limits per tier (🎭 button)
+- Edit AI package prices (Avatar $99)
+- Set individual company avatar limits
+
+### Widget Creation
+- Bot checks avatar/social widget limits
+- Error message if limit exceeded

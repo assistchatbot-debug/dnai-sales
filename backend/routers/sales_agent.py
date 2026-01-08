@@ -1653,6 +1653,8 @@ async def update_tier(tier: str, data: dict, db: AsyncSession = Depends(get_db))
         tier_obj.web_widgets_limit = int(data['web_widgets_limit'])
     if 'social_widgets_limit' in data:
         tier_obj.social_widgets_limit = int(data['social_widgets_limit'])
+    if 'avatar_limit' in data:
+        tier_obj.avatar_limit = int(data['avatar_limit'])
     
     await db.commit()
     await db.refresh(tier_obj)
