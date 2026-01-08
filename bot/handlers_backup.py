@@ -341,7 +341,7 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
                         leads=data.get('leads',[])
                         from datetime import datetime,timedelta
                         week_ago=datetime.now()-timedelta(days=7)
-                        week_leads=[l for l in leads if datetime.fromisoformat(l['created_at'].replace('Z','+00:00'))>week_ago and l.get('contact_info') and (l['contact_info'].get('name') or l['contact_info'].get('phone'))]
+                        week_leads=[l for l in leads if datetime.fromisoformat(l['created_at'].replace('Z','+00:00'))>week_ago]
                         from collections import Counter
                         sources=Counter(l.get('source','web') for l in week_leads)
                         msg=f"📊 <b>Лиды за неделю</b>\n\nВсего: {len(week_leads)}\n\n<b>По источникам:</b>\n"
@@ -367,21 +367,7 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
                             name=contact.get('name','Не указано')
                             phone=contact.get('phone','Не указан')
                             source=lead.get('source','web')
-                            # Get channel name if source is ID
-                            if source.isdigit():
-                                try:
-                                    async with aiohttp.ClientSession() as s:
-                                        async with s.get(f'{API_BASE_URL}/sales/companies/{company_id}/widgets/{source}') as r:
-                                            if r.status == 200:
-                                                wd = await r.json()
-                                                source_name = f"{wd.get('channel_name','Widget').capitalize()} #{source}"
-                                            else:
-                                                source_name = f"Widget #{source}"
-                                except:
-                                    source_name = f"Widget #{source}"
-                            else:
-                                source_name = source
-                            msg+=f"• {name} ({phone}) - {source_name}\n"
+                            msg+=f"• {name} ({phone}) - {source}\n"
                         await message.answer(msg,parse_mode='HTML')
                     else:
                         await message.answer("⚠️ Не удалось получить лиды")
@@ -398,7 +384,7 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
                         leads=data.get('leads',[])
                         from datetime import datetime,timedelta
                         month_ago=datetime.now()-timedelta(days=30)
-                        month_leads=[l for l in leads if datetime.fromisoformat(l['created_at'].replace('Z','+00:00'))>month_ago and l.get('contact_info') and (l['contact_info'].get('name') or l['contact_info'].get('phone'))]
+                        month_leads=[l for l in leads if datetime.fromisoformat(l['created_at'].replace('Z','+00:00'))>month_ago]
                         from collections import Counter
                         sources=Counter(l.get('source','web') for l in month_leads)
                         msg=f"📊 <b>Лиды за месяц</b>\n\nВсего: {len(month_leads)}\n\n<b>По источникам:</b>\n"
@@ -424,21 +410,7 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
                             name=contact.get('name','Не указано')
                             phone=contact.get('phone','Не указан')
                             source=lead.get('source','web')
-                            # Get channel name if source is ID
-                            if source.isdigit():
-                                try:
-                                    async with aiohttp.ClientSession() as s:
-                                        async with s.get(f'{API_BASE_URL}/sales/companies/{company_id}/widgets/{source}') as r:
-                                            if r.status == 200:
-                                                wd = await r.json()
-                                                source_name = f"{wd.get('channel_name','Widget').capitalize()} #{source}"
-                                            else:
-                                                source_name = f"Widget #{source}"
-                                except:
-                                    source_name = f"Widget #{source}"
-                            else:
-                                source_name = source
-                            msg+=f"• {name} ({phone}) - {source_name}\n"
+                            msg+=f"• {name} ({phone}) - {source}\n"
                         await message.answer(msg,parse_mode='HTML')
                     else:
                         await message.answer("⚠️ Не удалось получить лиды")
@@ -453,14 +425,12 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(
-                    f'{API_BASE_URL}/sales/{company_id}/leads?limit=50',
+                    f'{API_BASE_URL}/sales/{company_id}/leads?limit=10',
                     timeout=aiohttp.ClientTimeout(total=5)
                 ) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         leads = data.get('leads', [])
-                        # Filter out empty leads (no name and no phone)
-                        leads = [l for l in leads if l.get('contact_info') and l['contact_info'].get('phone')]
                         
                         if not leads:
                             await message.answer("📊 Лидов пока нет")
@@ -521,18 +491,6 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
                             
                             status = lead.get('status', 'new')
                             source = lead.get('source', 'unknown')
-                            # Get channel name if source is ID
-                            if source.isdigit():
-                                try:
-                                    async with aiohttp.ClientSession() as s:
-                                        async with s.get(f'{API_BASE_URL}/sales/companies/{company_id}/widgets/{source}') as r:
-                                            if r.status == 200:
-                                                wd = await r.json()
-                                                source = f"{wd.get('channel_name','Widget').capitalize()} #{source}"
-                                            else:
-                                                source = f"Widget #{source}"
-                                except:
-                                    source = f"Widget #{source}"
                             created = lead.get('created_at', '')[:16]
                             
                             temp = contact.get('temperature', '🌤 теплый') if isinstance(contact, dict) else '🌤 теплый'
@@ -575,9 +533,7 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
                                 channel_name = w['channel_name']
                                 channel_display = channel_name.capitalize()
                                 widget_id = w['id']
-                                wtype = w.get('widget_type', 'classic')
-                                url_path = 'avatar' if wtype == 'avatar' else 'w'
-                                widget_url = f"https://bizdnai.com/{url_path}/{company_id}/{widget_id}"
+                                widget_url = f"https://bizdnai.com/w/{company_id}/{widget_id}"
                                 
                                 msg_parts.append(f"• {channel_display} (ID: {widget_id})")
                                 msg_parts.append(f"  🔗 {widget_url}")
@@ -702,7 +658,6 @@ async def process_greeting(message: types.Message, state: FSMContext):
     
     data = await state.get_data()
     channel_name_raw = data.get('channel_name', '')
-    widget_type = data.get('widget_type', 'classic')
     company_id = message.bot.company_id
     
     await message.answer("⏳ Создаю канал...")
@@ -713,21 +668,17 @@ async def process_greeting(message: types.Message, state: FSMContext):
                 f'{API_BASE_URL}/sales/companies/{company_id}/widgets',
                 json={
                     'channel_name': channel_name_raw,
-                    'greeting_message': greeting,
-                    'widget_type': widget_type
+                    'greeting_message': greeting
                 },
                 timeout=aiohttp.ClientTimeout(total=30)
             ) as resp:
                 if resp.status == 200:
                     result = await resp.json()
-                    wid = result.get('id', '')
-                    url_path = 'avatar' if widget_type == 'avatar' else 'w'
-                    url = f"https://bizdnai.com/{url_path}/{company_id}/{wid}"
-                    type_icon = "🎭" if widget_type == 'avatar' else "📱"
+                    url = result.get('url', '')
+                    name = result.get('channel_name', '')
                     
                     await message.answer(
                         f"🎉 <b>Канал создан!</b>\n\n"
-                        f"{type_icon} Тип: {'Аватар' if widget_type == 'avatar' else 'Классический'}\n"
                         f"📱 Название: {channel_name_raw}\n"
                         f"🔗 URL: {url}\n"
                         f"💬 Приветствие: {greeting or 'стандартное'}\n\n"
@@ -1087,25 +1038,17 @@ async def handle_text(message: types.Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("create_widget_"))
 async def create_widget_callback(callback: types.CallbackQuery, state: FSMContext):
-    """Handle Create Widget button - ask for widget type"""
+    """Handle 'Create Widget' button"""
     if not is_manager(callback.from_user.id, callback.bot):
         await callback.answer("❌ Недостаточно прав", show_alert=True)
         return
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎭 С аватаром", callback_data="widgettype_avatar")],
-        [InlineKeyboardButton(text="📱 Классический", callback_data="widgettype_classic")]
-    ])
-    await callback.message.answer("📝 <b>Выберите тип виджета:</b>", reply_markup=keyboard, parse_mode='HTML')
-    await callback.answer()
-
-@router.callback_query(F.data.startswith("widgettype_"))
-async def widget_type_callback(callback: types.CallbackQuery, state: FSMContext):
-    widget_type = callback.data.replace("widgettype_", "")
-    await state.update_data(widget_type=widget_type)
-    type_name = "🎭 Аватар" if widget_type == "avatar" else "📱 Классический"
+    
     await state.set_state(ManagerFlow.entering_channel_name)
-    await callback.message.edit_text(f"Тип: {type_name}\n\nВведите название канала:", parse_mode='HTML')
+    await callback.message.answer(
+        "📝 <b>Создание канала</b>\n\n"
+        "Введите название канала (например: Instagram, Facebook, ВКонтакте):",
+        parse_mode='HTML'
+    )
     await callback.answer()
 
 @router.callback_query(F.data.startswith("edit_widget_"))
@@ -1160,16 +1103,7 @@ async def qr_widget_callback(callback: types.CallbackQuery):
 
     widget_id = callback.data.split("_")[-1]
     company_id = getattr(callback.bot, 'company_id', 1)
-    # Get widget type
-    try:
-        async with aiohttp.ClientSession() as sess:
-            async with sess.get(f'{API_BASE_URL}/sales/companies/{company_id}/widgets/{widget_id}') as r:
-                wdata = await r.json() if r.status == 200 else {}
-        wtype = wdata.get('widget_type', 'classic')
-    except:
-        wtype = 'classic'
-    url_path = 'avatar' if wtype == 'avatar' else 'w'
-    url = f"https://bizdnai.com/{url_path}/{company_id}/{widget_id}"
+    url = f"https://bizdnai.com/w/{company_id}/{widget_id}"
 
     try:
         import qrcode

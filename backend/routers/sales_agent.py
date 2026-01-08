@@ -1160,14 +1160,14 @@ async def update_company_tier(company_id: int, tier_data: dict, db: AsyncSession
 @router.get("/companies/{company_id}/widgets")
 async def list_widgets(company_id:int,db:AsyncSession=Depends(get_db)):
     r=await db.execute(select(SocialWidget).where(SocialWidget.company_id==company_id,SocialWidget.is_active==True))
-    return {"widgets":[{"id":w.id,"channel_name":w.channel_name,"greeting_message":w.greeting_message,"url":f"https://bizdnai.com/w/{company_id}/{w.channel_name}"}for w in r.scalars().all()]}
+    return {"widgets":[{"id":w.id,"channel_name":w.channel_name,"greeting_message":w.greeting_message,"widget_type":getattr(w,"widget_type","classic"),"url":f"https://bizdnai.com/w/{company_id}/{w.id}"}for w in r.scalars().all()]}
 
 @router.post("/companies/{company_id}/widgets")
 async def create_widget(company_id:int,data:dict,db:AsyncSession=Depends(get_db)):
     ch=transliterate_to_english(data.get("channel_name",""))
     if not ch:raise HTTPException(400,"channel_name required")
     # Allow multiple widgets per channel - no uniqueness check
-    w=SocialWidget(company_id=company_id,channel_name=ch,greeting_message=data.get("greeting_message","Здравствуйте!"),is_active=True)
+    w=SocialWidget(company_id=company_id,channel_name=ch,greeting_message=data.get("greeting_message","Здравствуйте!"),widget_type=data.get("widget_type","classic"),is_active=True)
     # Auto-translate greeting
     base_greeting = data.get("greeting_message","Здравствуйте!")
     w.greeting_ru = base_greeting

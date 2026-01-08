@@ -226,6 +226,7 @@ class SocialWidget(Base):
     greeting_uz=Column(Text)  # Uzbek
     greeting_uk=Column(Text)  # Ukrainian
     is_active=Column(Boolean,default=True)
+    widget_type=Column(String(20),default="classic")  # classic or avatar
     created_at=Column(DateTime(timezone=True),server_default=func.now())
     company=relationship("Company",back_populates="social_widgets")
 

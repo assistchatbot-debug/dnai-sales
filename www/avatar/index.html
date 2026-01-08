@@ -300,7 +300,8 @@ class AvatarController {
   
   setState(newState) {
     this.currentState = newState;
-    this.playVoice(newState);
+    if (newState === 'greeting') { this.playVoice('greeting'); }
+    if (newState === 'waiting') { this.startWaitingTimer(); } else { this.clearWaitingTimer(); }
     this.updateStateBadge();
     switch(newState) {
       case 'greeting': this.loadVideo('greeting'); this.video.loop = false; break;
@@ -428,14 +429,43 @@ class AvatarController {
 
   // Voice playback for states
   playVoice(state) {
+    // Only hello and waiting have voice
+    if (state !== 'greeting' && state !== 'waiting') return;
+    
     const lang = this.language || 'ru';
-    const audioMap = { greeting: 'hello', thinking: 'thinking', speaking: 'speaking', waiting: 'waiting' };
-    const audioName = audioMap[state];
-    if (!audioName) return;
+    const audioName = state === 'greeting' ? 'hello' : 'waiting';
+    
     if (this.currentAudio) { this.currentAudio.pause(); }
     this.currentAudio = new Audio('/avatar/audio/voice/' + audioName + '_' + lang + '.mp3');
     this.currentAudio.volume = 0.7;
     this.currentAudio.play().catch(e => {});
+  }
+  
+  // Waiting voice timer
+  startWaitingTimer() {
+    this.waitingCount = 0;
+    this.clearWaitingTimer();
+    // First waiting after 10 sec
+    this.waitingTimer = setTimeout(() => {
+      if (this.currentState === 'waiting') {
+        this.playVoice('waiting');
+        this.waitingCount++;
+      }
+      // Second waiting after 30 sec
+      this.waitingTimer = setTimeout(() => {
+        if (this.currentState === 'waiting' && this.waitingCount < 2) {
+          this.playVoice('waiting');
+          this.waitingCount++;
+        }
+      }, 30000);
+    }, 10000);
+  }
+  
+  clearWaitingTimer() {
+    if (this.waitingTimer) {
+      clearTimeout(this.waitingTimer);
+      this.waitingTimer = null;
+    }
   }
 
 }

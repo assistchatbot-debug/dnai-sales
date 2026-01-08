@@ -8,6 +8,7 @@ class SalesFlow(StatesGroup):
 
 class ManagerFlow(StatesGroup):
     entering_channel_name = State()
+    selecting_widget_type = State()
     entering_greeting = State()
     entering_widget_domain = State()
     entering_widget_greeting = State()
