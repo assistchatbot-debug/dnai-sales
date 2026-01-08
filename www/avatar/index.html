@@ -399,6 +399,11 @@ class AvatarController {
   setLanguage(lang) {
     this.language = lang;
     this.updateStateBadge();
+    // If chat is open, play greeting in new language and restart timer
+    if (!this.isFirstOpen) {
+      this.playVoice('greeting');
+      this.startWaitingTimer();
+    }
   }
   
   onWidgetOpen() {
@@ -432,7 +437,7 @@ class AvatarController {
     // Only hello and waiting have voice
     if (state !== 'greeting' && state !== 'waiting') return;
     
-    const lang = this.language || 'ru';
+    const langMap = {'ru':'ru','en':'en','kz':'kz','ky':'kg','uz':'uz','uk':'ua'}; const lang = langMap[this.language] || 'ru';
     const audioName = state === 'greeting' ? 'hello' : 'waiting';
     
     if (this.currentAudio) { this.currentAudio.pause(); }
