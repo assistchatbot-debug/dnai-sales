@@ -36,10 +36,12 @@ export function App() {
   const audioRef = useRef(null);
   const waitingTimerRef = useRef(null);
   const waitingCountRef = useRef(0);
+  const userStartedChatRef = useRef(false);
   const phaseRef = useRef(0);
   
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
+  const [userStartedChat, setUserStartedChat] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const messagesEndRef = useRef(null);
@@ -47,12 +49,12 @@ export function App() {
   const chunksRef = useRef([]);
   
   const texts = {
-    ru: { placeholder: 'Сообщение...', error: 'Ошибка сервера', online: 'Online', greeting: 'Привет! Чем помочь?' },
-    en: { placeholder: 'Message...', error: 'Server error', online: 'Online', greeting: 'Hello! How can I help?' },
-    kz: { placeholder: 'Хабарлама...', error: 'Сервер қатесі', online: 'Онлайн', greeting: 'Сәлем! Көмек керек пе?' },
-    ky: { placeholder: 'Билдирүү...', error: 'Сервер катасы', online: 'Онлайн', greeting: 'Салам! Жардам керекпи?' },
-    uz: { placeholder: 'Xabar...', error: 'Server xatosi', online: 'Onlayn', greeting: 'Salom! Yordam kerakmi?' },
-    uk: { placeholder: 'Повідомлення...', error: 'Помилка сервера', online: 'Онлайн', greeting: 'Привіт! Чим допомогти?' }
+    ru: { placeholder: 'Сообщение...', error: 'Ошибка сервера', online: 'Online', greeting: 'Привет! Чем помочь?', push: 'Нажмите' },
+    en: { placeholder: 'Message...', error: 'Server error', online: 'Online', greeting: 'Hello! How can I help?', push: 'Push' },
+    kz: { placeholder: 'Хабарлама...', error: 'Сервер қатесі', online: 'Онлайн', greeting: 'Сәлем! Көмек керек пе?', push: 'Басыңыз' },
+    ky: { placeholder: 'Билдирүү...', error: 'Сервер катасы', online: 'Онлайн', greeting: 'Салам! Жардам керекпи?', push: 'Басыңыз' },
+    uz: { placeholder: 'Xabar...', error: 'Server xatosi', online: 'Onlayn', greeting: 'Salom! Yordam kerakmi?', push: 'Bosing' },
+    uk: { placeholder: 'Повідомлення...', error: 'Помилка сервера', online: 'Онлайн', greeting: 'Привіт! Чим допомогти?', push: 'Натисніть' }
   };
   const t = texts[language] || texts.ru;
 
@@ -66,6 +68,7 @@ export function App() {
   };
 
   useEffect(() => { langRef.current = language; }, [language]);
+  useEffect(() => { userStartedChatRef.current = userStartedChat; }, [userStartedChat]);
 
   const playVoice = useCallback((type, forceLang = null) => {
     const audioLang = LANG_MAP[forceLang || langRef.current] || 'ru';
@@ -84,7 +87,7 @@ export function App() {
     const tick = () => {
       if (waitingCountRef.current >= delays.length) return;
       waitingTimerRef.current = setTimeout(() => {
-        playVoice('waiting');
+        if (!userStartedChatRef.current) playVoice('waiting');
         waitingCountRef.current++;
         tick();
       }, delays[waitingCountRef.current]);
@@ -223,6 +226,7 @@ export function App() {
     setMessages(p => [...p, { id: Date.now(), text: msg, sender: 'user' }]);
     setIsTyping(true);
     setAvatarState('thinking');
+    setUserStartedChat(true);
     clearWaitingTimer();
     
     try {
@@ -363,8 +367,8 @@ export function App() {
           <div className="cursor-pointer relative preview-video" style={{ width: '160px', height: '200px' }} onClick={handleOpen}>
             <video ref={previewVideoRef} className="hidden" muted playsInline />
             <canvas ref={previewCanvasRef} width="160" height="200" className="rounded-2xl shadow-2xl preview-canvas" style={{ background: '#1a1a1a' }} />
-            <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 px-3 py-1 bg-gradient-to-r from-cyan-500 to-purple-500 rounded-full text-xs text-white font-medium whitespace-nowrap shadow-lg">
-              💬 Написать
+            <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 px-3 py-1 bg-gradient-to-r from-cyan-500 to-purple-500 rounded-full text-xs text-white font-medium whitespace-nowrap shadow-lg push-btn">
+              ➜ {t.push}
             </div>
             <div className="absolute inset-0 rounded-2xl border-2 border-cyan-400 opacity-50 animate-pulse pointer-events-none"/>
           </div>
@@ -373,7 +377,9 @@ export function App() {
       
       <style>{`
         @keyframes ping{75%,100%{transform:scale(1.8);opacity:0}}
-select option{background-color:#1e293b;color:white}
+        @keyframes glow{0%,100%{box-shadow:0 0 5px #06b6d4,0 0 10px #06b6d4}50%{box-shadow:0 0 20px #a855f7,0 0 30px #a855f7}}
+        .push-btn{animation:glow 3s ease-in-out infinite}
+        select option{background-color:#1e293b;color:white}
       `}</style>
     </div>
   );
