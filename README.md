@@ -867,3 +867,79 @@ uk	Українська	🇺🇦
 
 🧪 Тестирование
 Открыть: https://bizdnai.com/test-avatar-widget.html
+
+🎭 Avatar Widget Updates (9 Jan 2026)
+Универсальный лоадер виджетов
+Создан единый скрипт для встраивания на сайты клиентов — автоматически определяет какой виджет загружать.
+
+Установка на сайт клиента
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://bizdnai.com/widget-source/bizdnaii-widget.js"></script>
+Логика выбора
+Условие	Загружается
+web_avatar_enabled=true	bizdnaii-avatar-widget.js
+Иначе	bizdnaii-widget-classic.js
+Файлы
+Файл	Размер	Назначение
+bizdnaii-widget.js	1.5KB	Лоадер
+bizdnaii-avatar-widget.js	40KB	Аватар
+bizdnaii-widget-classic.js	37KB	Классика
+Проверка лимитов аватара
+При открытии /avatar/{company_id}/{widget_id}:
+
+API проверяет avatar_limit компании
+Если avatar_limit = 0 → редирект на /w/{company_id}/{widget_id} (классика)
+Если лимит есть → показывает аватар
+API изменения
+GET /sales/companies/{id}/widgets/{widget_id} теперь возвращает:
+
+{
+  "widget_type": "avatar",
+  "is_active": false,
+  "redirect_url": "/w/1/23"
+}
+SuperAdmin: Web Avatar управление
+Меню: 📊 Компании → 🎭 Web Avatar
+Показывает:
+
+Статус ✅/❌
+Тариф и лимит по тарифу
+Текущий override лимит
+Кнопки:
+
+Включить/Выключить web_avatar_enabled
+Установить индивидуальный лимит
+Файлы изменены
+Файл	Изменения
+backend/models.py	Добавлен avatar_limit в Company
+backend/routers/sales_agent.py	web_avatar_enabled и avatar_limit в API
+bot/superadmin_bot.py	Toggle кнопка, показ лимитов
+/var/www/bizdnai/avatar/index.html	Обработка redirect_url
+Мобильная адаптация (viewport fix)
+КРИТИЧНО: Страницы должны содержать meta viewport!
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+Без этого виджет микроскопический на мобильных.
+
+Размеры виджета (текущие)
+Элемент	Размер
+Превью	160x200px
+Открытый виджет	80vw x 75vh
+Видео canvas	220x265px
+Голосовой сценарий
+Открытие → Приветствие на языке
+Ожидание → 10с, 30с, 60с говорит "Жду"
+После сообщения пользователя → Голос ОТКЛЮЧАЕТСЯ
+Кнопка "Нажмите"
+6 языков: ru="Нажмите", en="Push", kz/ky="Басыңыз", uz="Bosing", uk="Натисніть"
+Пульсация glow 3s
+Стрелка ➜
+Сборка
+# Avatar widget
+cd /root/dnai-sales/frontend/avatar-widget
+npm run build
+cp dist/bizdnaii-avatar-widget.js /var/www/bizdnai/widget-source/
+# Classic widget
+cd /root/dnai-sales/frontend/widget
+npm run build
+cp dist/bizdnaii-widget.js /var/www/bizdnai/widget-source/bizdnaii-widget-classic.js
