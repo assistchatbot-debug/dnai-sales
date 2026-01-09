@@ -11,7 +11,10 @@ const LANG_MAP = { ru: 'ru', en: 'en', kz: 'kz', ky: 'kg', uz: 'uz', uk: 'ua' };
 const LANG_LABELS = { ru: '🇷🇺 Русский', en: '🇺🇸 English', kz: '🇰🇿 Қазақша', ky: '🇰🇬 Кыргызча', uz: '🇺🇿 O\'zbekcha', uk: '🇺🇦 Українська' };
 
 export function App() {
+  
   const [isOpen, setIsOpen] = useState(false);
+  
+
   const [language, setLanguage] = useState(localStorage.getItem('bizdnaii_widget_lang') || 'ru');
   const langRef = useRef(language);
   const [visitorId] = useState(localStorage.getItem('bizdnaii_vid') || `v_${Math.random().toString(36).substr(2,9)}`);
@@ -286,7 +289,7 @@ export function App() {
       <audio ref={audioRef} />
       
       {isOpen ? (
-        <div style={{ width: 'min(384px, calc(100vw - 32px))', height: 'min(720px, calc(100vh - 100px))', marginBottom: '16px' }} className="bg-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-700">
+        <div style={{ width: 'min(90vw, 420px)', height: 'min(85vh, 750px)', marginBottom: '16px' }} className="bg-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-700 widget-open">
           {/* Avatar with close button */}
           <div className="relative bg-gradient-to-b from-slate-900 to-slate-800">
             {/* Close button top right */}
@@ -337,7 +340,7 @@ export function App() {
         </div>
       ) : (
         /* VIDEO PREVIEW with language selector */
-        <div className="flex flex-col items-end gap-1">
+        <div className="flex flex-col items-end gap-1 preview-container">
           {/* Language dropdown above video */}
           <select 
             value={language}
@@ -349,7 +352,7 @@ export function App() {
               handleOpen(); 
             }}
             onBlur={() => handleOpen()}
-            className="w-[140px] bg-slate-800/90 text-white text-xs rounded-lg px-2 py-1.5 focus:outline-none cursor-pointer"
+            style={{ width: '160px' }} className=" bg-slate-800/90 text-white text-xs rounded-lg px-2 py-1.5 focus:outline-none cursor-pointer preview-select"
             style={{ boxShadow: '0 0 10px rgba(0, 212, 255, 0.6), 0 0 20px rgba(0, 212, 255, 0.3)', border: '1px solid rgba(0, 212, 255, 0.5)' }}
           >
             
@@ -357,9 +360,9 @@ export function App() {
           </select>
           
           {/* Video preview */}
-          <div className="cursor-pointer relative" style={{ width: '140px', height: '180px' }} onClick={handleOpen}>
+          <div className="cursor-pointer relative preview-video" style={{ width: '160px', height: '200px' }} onClick={handleOpen}>
             <video ref={previewVideoRef} className="hidden" muted playsInline />
-            <canvas ref={previewCanvasRef} width="140" height="180" className="rounded-2xl shadow-2xl" style={{ background: '#1a1a1a' }} />
+            <canvas ref={previewCanvasRef} width="160" height="200" className="rounded-2xl shadow-2xl preview-canvas" style={{ background: '#1a1a1a' }} />
             <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 px-3 py-1 bg-gradient-to-r from-cyan-500 to-purple-500 rounded-full text-xs text-white font-medium whitespace-nowrap shadow-lg">
               💬 Написать
             </div>
