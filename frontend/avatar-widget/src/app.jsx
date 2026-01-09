@@ -3,7 +3,7 @@
  * Video preview instead of button
  */
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
-import { X, Send, Mic, Square } from 'lucide-preact';
+import { X, Send, Mic, Square, RotateCcw } from 'lucide-preact';
 
 const VIDEO_BASE = 'https://bizdnai.com/avatar/videos/';
 const AUDIO_BASE = 'https://bizdnai.com/avatar/audio/voice/';
@@ -40,6 +40,13 @@ export function App() {
   const phaseRef = useRef(0);
   
   const [messages, setMessages] = useState([]);
+  
+  const resetChat = () => {
+    const newId = 'v_' + Math.random().toString(36).substr(2,9);
+    localStorage.setItem('bizdnaii_vid', newId);
+    localStorage.removeItem('bizdnaii_widget_lang');
+    window.location.reload();
+  };
   const [inputText, setInputText] = useState('');
   const [userStartedChat, setUserStartedChat] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
@@ -297,7 +304,8 @@ export function App() {
           {/* Avatar with close button */}
           <div className="relative bg-gradient-to-b from-slate-900 to-slate-800">
             {/* Close button top right */}
-            <button onClick={() => { setIsOpen(false); clearWaitingTimer(); }} className="absolute top-2 right-2 z-10 text-white hover:bg-white/20 p-1.5 rounded-full bg-black/30"><X size={18} /></button>
+            <button onClick={resetChat} className="absolute top-16 right-2 z-10 text-white hover:bg-white/20 p-1.5 rounded-full bg-black/30" title="Новый чат"><RotateCcw size={16} /></button>
+            <button onClick={() => { setIsOpen(false); clearWaitingTimer(); }} className="absolute top-2 right-2 z-10 text-white hover:bg-red-400 p-2 rounded-full bg-red-500"><X size={22} /></button>
             
             <div className="relative w-full flex justify-center" style={{ height: '265px' }}>
               <video ref={videoRef} className="hidden" muted playsInline />
