@@ -43,6 +43,7 @@ class Company(Base):
     tier_expiry = Column(DateTime(timezone=True), nullable=True)
     ai_package = Column(String(20), default='basic')
     web_avatar_enabled = Column(Boolean, default=False)  # Web avatar widget enabled
+    avatar_limit = Column(Integer, nullable=True)  # Individual company avatar limit override
     leads_used_this_month = Column(Integer, default=0)
     leads_reset_date = Column(DateTime, nullable=True)
     

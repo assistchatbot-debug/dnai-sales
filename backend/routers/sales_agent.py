@@ -860,6 +860,7 @@ async def get_widget_config(request: Request, db: AsyncSession = Depends(get_db)
         return {
             'company_id': company.id,
             'company_name': company.name,
+            'web_avatar_enabled': company.web_avatar_enabled or False,
             'logo_url': company.logo_url or 'https://bizdnai.com/logo.png',
             'is_active': widget.is_active,
             'greetings': {
