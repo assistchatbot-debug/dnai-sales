@@ -526,16 +526,33 @@ async def select_web_avatar(message: types.Message, state: FSMContext):
         companies = data.get('companies', [])
         if 0 <= num < len(companies):
             company = companies[num]
-            new_value = not company.get('web_avatar_enabled', False)
+            current_status = company.get('web_avatar_enabled', False)
+            tier = company.get('tier', 'free')
+            
             async with aiohttp.ClientSession() as session:
-                await session.post(f'{API_BASE_URL}/sales/company/upsert', json={'id': company['id'], 'web_avatar_enabled': new_value})
-            status = '✅ Включён' if new_value else '❌ Выключен'
-            await message.answer(f"🎭 Web Avatar для {company['name']}: {status}")
-            # Ask for avatar limit
-            current_limit = company.get('avatar_limit') or 'по тарифу'
+                async with session.get(f'{API_BASE_URL}/sales/tiers') as resp:
+                    tiers = await resp.json() if resp.status == 200 else []
+            
+            tier_limit = next((t.get('avatar_limit', 0) for t in tiers if t.get('tier') == tier), 0)
+            override_limit = company.get('avatar_limit')
+            current_limit = override_limit if override_limit is not None else tier_limit
+            
+            status_text = '✅ Включён' if current_status else '❌ Выключен'
+            btn_text = '❌ Выключить' if current_status else '✅ Включить'
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text=btn_text, callback_data=f"toggle_avatar_{company['id']}")]
+            ])
+            
             await state.update_data(company_id=company['id'], company_name=company['name'])
+            await message.answer(
+                f"🎭 <b>Web Avatar для {company['name']}</b>\n\n"
+                f"Статус: {status_text}\n"
+                f"Тариф: {tier} (лимит по тарифу: {tier_limit})\n"
+                f"Текущий лимит: {current_limit}\n\n"
+                f"Введите новый лимит (число) или '.' для пропуска:",
+                reply_markup=kb, parse_mode='HTML'
+            )
             await state.set_state(CompanyFlow.entering_company_avatar_limit)
-            await message.answer(f"🎭 Лимит аватаров для {company['name']}\n\nТекущий: {current_limit}\n\nВведите новый лимит (число) или '.' для пропуска:")
         else:
             await message.answer("❌ Неверный номер")
             await state.clear()
@@ -558,6 +575,26 @@ async def enter_company_avatar_limit(message: types.Message, state: FSMContext):
     else:
         await message.answer("✅ Лимит не изменён", reply_markup=get_company_menu_keyboard())
     await state.clear()
+
+
+@dp.callback_query(lambda c: c.data.startswith('toggle_avatar_'))
+async def toggle_avatar_callback(callback: types.CallbackQuery):
+    company_id = int(callback.data.split('_')[2])
+    async with aiohttp.ClientSession() as session:
+        # Получаем текущий статус
+        async with session.get(f'{API_BASE_URL}/sales/companies/all') as resp:
+            companies = await resp.json()
+            company = next((c for c in companies if c['id'] == company_id), None)
+            if company:
+                new_status = not company.get('web_avatar_enabled', False)
+                # Обновляем
+                await session.post(f'{API_BASE_URL}/sales/company/upsert', 
+                                  json={'id': company_id, 'web_avatar_enabled': new_status})
+                status_text = '✅ Включён' if new_status else '❌ Выключен'
+                await callback.answer(f"Web Avatar: {status_text}")
+                await callback.message.edit_text(
+                    f"🎭 Web Avatar для {company['name']}: {status_text}\n\nВведите лимит или '.' для пропуска:"
+                )
 
 @dp.message(F.text == "🎯 Установить тариф")
 async def start_set_tier(message: types.Message, state: FSMContext):

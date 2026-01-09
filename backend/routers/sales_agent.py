@@ -1138,7 +1138,9 @@ async def get_all_companies(db: AsyncSession = Depends(get_db)):
             'ai_endpoint': c.ai_endpoint,
             'ai_api_key': c.ai_api_key,
             'tier': c.tier,
-            'tier_expiry': c.tier_expiry.isoformat() if c.tier_expiry else None
+            'tier_expiry': c.tier_expiry.isoformat() if c.tier_expiry else None,
+            'web_avatar_enabled': c.web_avatar_enabled or False,
+            'avatar_limit': c.avatar_limit
         } for c in companies]
     except Exception as e:
         logging.error(f'Get all companies error: {e}')
@@ -1333,11 +1335,28 @@ async def update_social_widget(company_id: int, widget_id: int, data: dict, db: 
 
 @router.get("/companies/{company_id}/widgets/{widget_id:int}")
 async def get_widget_by_id(company_id:int,widget_id:int,db:AsyncSession=Depends(get_db)):
-    """Get widget by ID"""
+    """Get widget by ID with avatar limit check"""
     r=await db.execute(select(SocialWidget).where(SocialWidget.company_id==company_id,SocialWidget.id==widget_id,SocialWidget.is_active==True))
     w=r.scalar_one_or_none()
     if not w:raise HTTPException(404,"Widget not found")
-    return {"id":w.id,"company_id":w.company_id,"channel_name":w.channel_name,"greeting_message":w.greeting_message,"greetings":{"ru":w.greeting_ru or w.greeting_message,"en":w.greeting_en or w.greeting_message,"kz":w.greeting_kz or w.greeting_message,"ky":w.greeting_ky or w.greeting_message,"uz":w.greeting_uz or w.greeting_message,"uk":w.greeting_uk or w.greeting_message},"is_active":w.is_active}
+    
+    # Check avatar limit for avatar widgets
+    widget_type = getattr(w, 'widget_type', 'classic') or 'classic'
+    redirect_url = None
+    is_active = w.is_active
+    
+    if widget_type == 'avatar':
+        # Get company and check avatar_limit
+        comp = await db.execute(select(Company).where(Company.id == company_id))
+        company = comp.scalar_one_or_none()
+        if company:
+            avatar_limit = company.avatar_limit or 0
+            if avatar_limit <= 0:
+                # No avatar allowed, redirect to classic widget
+                redirect_url = f"/w/{company_id}/{widget_id}"
+                is_active = False
+    
+    return {"id":w.id,"company_id":w.company_id,"channel_name":w.channel_name,"widget_type":widget_type,"greeting_message":w.greeting_message,"greetings":{"ru":w.greeting_ru or w.greeting_message,"en":w.greeting_en or w.greeting_message,"kz":w.greeting_kz or w.greeting_message,"ky":w.greeting_ky or w.greeting_message,"uz":w.greeting_uz or w.greeting_message,"uk":w.greeting_uk or w.greeting_message},"is_active":is_active,"redirect_url":redirect_url}
 
 
 
