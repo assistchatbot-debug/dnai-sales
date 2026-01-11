@@ -26,3 +26,12 @@ analyze_*.py
 restore_*.py
 sync_*.sh
 backup_*/
+
+# Integrations
+integrations/clients/*/.env
+integrations/clients/*/logs/
+integrations/clients/*/__pycache__/
+integrations/clients/*/venv/
+integrations/clients/*/*.db
+!integrations/shared/
+!integrations/clients/*/.env.example
