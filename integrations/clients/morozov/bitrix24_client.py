@@ -109,6 +109,25 @@ class Bitrix24Client:
             }
         })
     
+
+    async def get_won_deals(self, date_from: str, date_to: str) -> List[Dict]:
+        """Получить выигранные сделки за период"""
+        logger.info(f"Getting won deals from {date_from} to {date_to}")
+        result = await self._call_method("crm.deal.list", {
+            "filter": {
+                "STAGE_ID": "WON",
+                ">=CLOSEDATE": date_from,
+                "<=CLOSEDATE": date_to
+            },
+            "select": ["ID", "TITLE", "OPPORTUNITY", "ASSIGNED_BY_ID", "CLOSEDATE"]
+        })
+        return result if isinstance(result, list) else []
+    
+    async def get_user(self, user_id: str) -> Dict:
+        """Получить данные пользователя"""
+        result = await self._call_method("user.get", {"ID": user_id})
+        return result[0] if result else {}
+
     async def close(self):
         """Закрыть HTTP клиент"""
         await self.client.aclose()

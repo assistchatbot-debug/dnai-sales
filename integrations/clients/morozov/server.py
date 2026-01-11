@@ -39,6 +39,7 @@ class ProductMappingCreate(BaseModel):
 
 
 # Lifecycle management
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Инициализация и завершение приложения"""
@@ -330,6 +331,16 @@ async def get_product_mappings(session: AsyncSession = Depends(get_session)):
 async def telegram_webhook(request: Request):
     try:
         data = await request.json()
+        
+        # Callback query (кнопки аналитики)
+        if "callback_query" in data:
+            callback = data["callback_query"]
+            chat_id = str(callback["message"]["chat"]["id"])
+            callback_data = callback["data"]
+            tg = TelegramBot(settings.telegram_bot_token, chat_id, bitrix24)
+            await tg.handle_callback(callback_data, chat_id)
+            return {"ok": True}
+        
         msg = data.get('message', {})
         text = msg.get('text', '')
         chat_id = msg.get('chat', {}).get('id')
@@ -337,17 +348,18 @@ async def telegram_webhook(request: Request):
         if not chat_id:
             return {"ok": True}
         
-        tg = TelegramBot(settings.telegram_bot_token, str(chat_id))
+        tg = TelegramBot(settings.telegram_bot_token, str(chat_id), bitrix24)
         
-        if '📦' in text:
+        # Команды
+        if text in ['/start', '/analytics', '📊']:
+            await tg.send_analytics_menu(str(chat_id))
+        elif '📦' in text:
             await tg.send_message("⏳ Загружаю остатки...")
             from stock_report import get_stock_report
             report = await get_stock_report(settings.onec_base_url, settings.onec_username, settings.onec_password)
             await tg.send_message(report)
-        elif '📊' in text:
-            status = "📊 *СТАТУС СИСТЕМЫ*\n\n✅ Middleware: Работает\n✅ 1С: Подключено\n✅ Bitrix24: Активно\n✅ PostgreSQL: Подключено"
-            await tg.send_message(status)
         
         return {"ok": True}
     except Exception as e:
+        logger.error(f"Telegram webhook error: {e}")
         return {"ok": False}

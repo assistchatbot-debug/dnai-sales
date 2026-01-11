@@ -10,6 +10,7 @@ services:
       - .env
     volumes:
       - ./logs:/app/logs
+      - ../../shared:/app/shared
     ports:
       - "8008:8008"
     restart: unless-stopped
