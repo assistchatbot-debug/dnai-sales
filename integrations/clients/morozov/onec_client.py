@@ -67,7 +67,8 @@ class OneCClient:
           <d:СуммаНДС>{sum_nds}</d:СуммаНДС>
         </d:element>'''
         
-        comment = f"Bitrix24 сделка {deal_id}: {customer_name} {customer_phone}"
+        deal_title = order_data.get("deal_title", "")
+        comment = f"Bitrix24 сделка {deal_id}: {customer_name}, {deal_title}"
         
         xml_data = f'''<?xml version="1.0" encoding="utf-8"?>
 <entry xmlns="http://www.w3.org/2005/Atom" xmlns:d="http://schemas.microsoft.com/ado/2007/08/dataservices" xmlns:m="http://schemas.microsoft.com/ado/2007/08/dataservices/metadata">

@@ -201,10 +201,11 @@ async def process_deal_to_1c(deal_id: str, session: AsyncSession):
         if result.get("success"):
             order_number = result.get("order_number")
             await bitrix24.update_deal_field(deal_id, "UF_1C_ORDER_ID", order_number)
-            await bitrix24.create_activity(
+            from datetime import datetime
+            order_date = datetime.now().strftime("%d.%m.%Y")
+            await bitrix24.add_deal_comment(
                 deal_id,
-                "Накладная создана в 1С",
-                f"Номер накладной: {order_number}"
+                f"✅ Накладная №{order_number} от {order_date} создана в 1С"
             )
             
             # Telegram уведомление
