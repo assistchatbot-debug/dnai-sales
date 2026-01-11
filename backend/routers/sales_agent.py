@@ -613,6 +613,34 @@ async def upsert_company(data: dict, db: AsyncSession = Depends(get_db)):
         company.avatar_limit = int(data['avatar_limit'])
         logging.info(f'🎭 Updated avatar_limit for company {company_id}: {data["avatar_limit"]}')
     
+    # Integration fields
+    if 'integration_enabled' in data:
+        company.integration_enabled = bool(data['integration_enabled'])
+        logging.info(f'🔌 Updated integration_enabled for company {company_id}: {data["integration_enabled"]}')
+    if 'integration_type' in data:
+        company.integration_type = data['integration_type']
+        logging.info(f'🔌 Updated integration_type for company {company_id}: {data["integration_type"]}')
+    if 'onec_enabled' in data:
+        company.onec_enabled = bool(data['onec_enabled'])
+    if 'onec_base_url' in data:
+        company.onec_base_url = data['onec_base_url']
+        logging.info(f'🏭 Updated onec_base_url for company {company_id}')
+    if 'onec_username' in data:
+        company.onec_username = data['onec_username']
+    if 'onec_password' in data:
+        company.onec_password = data['onec_password']
+    if 'bitrix24_webhook_url' in data:
+        company.bitrix24_webhook_url = data['bitrix24_webhook_url']
+        logging.info(f'📊 Updated bitrix24_webhook_url for company {company_id}')
+    if 'kommo_subdomain' in data:
+        company.kommo_subdomain = data['kommo_subdomain']
+    if 'kommo_client_id' in data:
+        company.kommo_client_id = data['kommo_client_id']
+    if 'kommo_client_secret' in data:
+        company.kommo_client_secret = data['kommo_client_secret']
+    if 'kommo_refresh_token' in data:
+        company.kommo_refresh_token = data['kommo_refresh_token']
+    
     await db.commit()
     await db.refresh(company)
     
@@ -1140,7 +1168,18 @@ async def get_all_companies(db: AsyncSession = Depends(get_db)):
             'tier': c.tier,
             'tier_expiry': c.tier_expiry.isoformat() if c.tier_expiry else None,
             'web_avatar_enabled': c.web_avatar_enabled or False,
-            'avatar_limit': c.avatar_limit
+            'avatar_limit': c.avatar_limit,
+            'integration_enabled': c.integration_enabled or False,
+            'integration_type': c.integration_type,
+            'onec_enabled': c.onec_enabled or False,
+            'onec_base_url': c.onec_base_url,
+            'onec_username': c.onec_username,
+            'onec_password': c.onec_password,
+            'bitrix24_webhook_url': c.bitrix24_webhook_url,
+            'kommo_subdomain': c.kommo_subdomain,
+            'kommo_client_id': c.kommo_client_id,
+            'kommo_client_secret': c.kommo_client_secret,
+            'kommo_refresh_token': c.kommo_refresh_token
         } for c in companies]
     except Exception as e:
         logging.error(f'Get all companies error: {e}')

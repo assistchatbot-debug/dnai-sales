@@ -1,43 +1,63 @@
-"""Конфигурация приложения"""
-from pydantic_settings import BaseSettings
+"""Configuration from Database for H&B Technology"""
+import os
+import httpx
+from loguru import logger
 
-
-class Settings(BaseSettings):
-    """Настройки приложения из переменных окружения"""
+class Settings:
+    def __init__(self):
+        self.company_id = 7
+        self.api_base_url = os.getenv('API_BASE_URL', 'http://localhost:8005')
+        self.database_url = os.getenv('DATABASE_URL', '')
+        self.sync_schedule_hour = 3  # Default: 3 AM
+        self.sync_schedule_minute = 0
+        self.log_level = 'INFO'  # Default log level
+        self._load_from_database()
     
-    # Битрикс24
-    bitrix24_webhook_url: str
-    bitrix24_domain: str
+    def _load_from_database(self):
+        try:
+            logger.info(f"🔍 Loading from DB for company_id={self.company_id}...")
+            response = httpx.get(f'{self.api_base_url}/sales/companies/all', timeout=10.0)
+            
+            if response.status_code == 200:
+                companies = response.json()
+                logger.info(f"📊 Found {len(companies)} companies total")
+                company = next((c for c in companies if c['id'] == self.company_id), None)
+                
+                if company:
+                    logger.info(f"✅ Found company: {company.get('name')}")
+                    logger.info(f"   Integration enabled: {company.get('integration_enabled')}")
+                    logger.info(f"   Integration type: {company.get('integration_type')}")
+                    
+                    if company.get('integration_enabled'):
+                        self.bitrix24_webhook_url = company.get('bitrix24_webhook_url', '')
+                        self.onec_base_url = company.get('onec_base_url', '')
+                        self.onec_username = company.get('onec_username', '')
+                        self.onec_password = company.get('onec_password', '')
+                        self.telegram_bot_token = company.get('bot_token', '')
+                        self.telegram_chat_id = company.get('manager_chat_id', 0)
+                        logger.success(f"✅ Loaded from DB successfully!")
+                        logger.info(f"   Bitrix24: {self.bitrix24_webhook_url[:50]}...")
+                        logger.info(f"   1C: {self.onec_base_url}")
+                        return
+                    else:
+                        logger.warning("⚠️ Integration disabled in DB, using fallback")
+                else:
+                    logger.error(f"❌ Company {self.company_id} not found in DB")
+            else:
+                logger.error(f"❌ API returned status {response.status_code}")
+            
+            self._load_fallback()
+        except Exception as e:
+            logger.error(f"❌ DB load failed: {e}")
+            self._load_fallback()
     
-    # 1С
-    onec_base_url: str
-    onec_username: str
-    onec_password: str
-    onec_http_service_path: str = "/hs/bitrix-integration"
-    
-    # База данных
-    database_url: str
-    
-    # OpenRouter
-    openrouter_api_key: str
-    openrouter_model: str = "openai/gpt-oss-120b"
-    
-    # Telegram
-    telegram_bot_token: str = ""
-    telegram_chat_id: str = ""
-    
-    # Сервер
-    server_host: str = "0.0.0.0"
-    server_port: int = 8008
-    log_level: str = "INFO"
-    
-    # Синхронизация
-    sync_schedule_hour: int = 0
-    sync_schedule_minute: int = 0
-    
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
-
+    def _load_fallback(self):
+        logger.warning("⚠️ Using empty fallback - middleware will NOT work!")
+        self.bitrix24_webhook_url = ''
+        self.onec_base_url = ''
+        self.onec_username = ''
+        self.onec_password = ''
+        self.telegram_bot_token = ''
+        self.telegram_chat_id = 0
 
 settings = Settings()
