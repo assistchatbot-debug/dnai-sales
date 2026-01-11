@@ -413,3 +413,121 @@ Last Updated: January 11, 2026
 Duration: 2 hours (40 min bot + 80 min migration)
 Status: ✅ Production - All integrations from Database
 
+# Widget → CRM Integration (Bitrix24)
+Что делает
+Автоматически отправляет лиды из виджетов (Instagram, Web и др.) в CRM клиента (Bitrix24).
+
+Как работает
+Поток данных
+Виджет → Диалог с AI → Сбор контактов → Подтверждение пользователем → Отправка в Bitrix24
+Что отправляется в Bitrix24
+Контакт (crm.contact.add):
+
+Имя
+Телефон
+Сделка (crm.deal.add):
+
+Название: Лид с Widget #XX - Имя
+Стадия: NEW
+Комментарий: AI анализ диалога (температура, интересы, краткое содержание)
+Привязка к контакту
+Управление интеграцией
+Для менеджера (в Telegram боте)
+Кнопка 🔌 Интеграция CRM в главном меню
+Показывает текущий статус (включена/выключена)
+Inline кнопка для переключения ON/OFF
+МУЛЬТИТЕНАНСИ: каждая компания управляет своей интеграцией отдельно
+Для SuperAdmin
+Команда ⚙️ Интеграции
+Выбрать компанию
+Настроить:
+integration_type: bitrix24
+bitrix24_webhook_url: webhook URL
+integration_enabled: true/false
+Настройка Bitrix24 Webhook
+Формат URL:
+https://COMPANY.bitrix24.kz/rest/USER_ID/WEBHOOK_KEY/
+Как получить:
+Bitrix24 → Приложения → Вебхуки → Входящий вебхук
+Добавить права: crm.contact.add, crm.deal.add
+Скопировать URL
+Структура кода
+Backend (backend/routers/sales_agent.py)
+Функция отправки (строка ~61):
+
+async def send_lead_to_bitrix24(lead_id: int, company_id: int, db: AsyncSession):
+    # 1. Проверяет integration_enabled и integration_type
+    # 2. Получает историю диалога
+    # 3. Генерирует AI summary
+    # 4. Создает контакт в Bitrix24
+    # 5. Создает сделку с привязкой к контакту
+Вызов (строка ~510):
+
+# После background_send_notifications - ТОЛЬКО после подтверждения контактов
+asyncio.create_task(send_lead_to_bitrix24(lead_id, company_id, db))
+Bot (bot/handlers.py)
+Кнопка в меню:
+
+def get_manager_keyboard():
+    # ...
+    [KeyboardButton(text="🔌 Интеграция CRM")],
+Handler (в process_manager_command):
+
+elif 'интеграция' in text_lower or 'crm' in text_lower:
+    # Показывает статус и inline кнопку toggle
+Callback toggle:
+
+@router.callback_query(F.data == "toggle_crm_integration")
+async def toggle_crm_integration_callback(callback):
+    # Переключает integration_enabled через API
+Database (Company model)
+# backend/models.py - Company table
+integration_enabled: bool       # ON/OFF для CRM интеграции
+integration_type: str           # 'bitrix24', 'kommo', etc.
+bitrix24_webhook_url: str       # Webhook URL для Bitrix24
+API Endpoints
+Получить статус компаний:
+GET /sales/companies/all
+Response: [{id, integration_enabled, integration_type, bitrix24_webhook_url, ...}]
+
+Обновить настройки:
+POST /sales/company/upsert
+{"id": company_id, "integration_enabled": true}
+Тестирование
+Включить интеграцию:
+
+Через бот менеджера: кнопка 🔌 Интеграция CRM → Включить
+Или через SuperAdmin: Интеграции → компания → включить
+Создать тестовый лид:
+
+https://bizdnai.com/w/{company_id}/{widget_id}
+Проверить логи:
+
+docker-compose logs backend | grep -E "Bitrix24|DEAL"
+Проверить Bitrix24:
+
+Раздел Сделки → новая сделка
+Комментарий содержит AI анализ
+Troubleshooting
+Лид не приходит в Bitrix24
+# Проверить настройки компании
+curl -s http://localhost:8000/sales/companies/all | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for c in data:
+    if c.get('integration_enabled'):
+        print(f\"Company {c['id']}: enabled={c['integration_enabled']}, type={c['integration_type']}, webhook={'YES' if c.get('bitrix24_webhook_url') else 'NO'}\")"
+Ошибка "asyncio not defined"
+grep "^import asyncio" backend/routers/sales_agent.py
+# Если нет - добавить после import logging
+Дубликаты лидов в Bitrix24
+Вызов send_lead_to_bitrix24 должен быть ТОЛЬКО после background_send_notifications, не после get_or_create_lead.
+
+Ошибка 429 (Rate limit)
+AI summary генерируется слишком часто. Проверить что вызов идет только после подтверждения.
+
+Важные моменты
+Один лид = одна сделка - отправка только после подтверждения контактов
+МУЛЬТИ режим - каждая компания настраивается отдельно
+AI анализ - генерируется из истории диалога и добавляется в комментарий сделки
+Контакт + Сделка - создаются оба объекта, связаны между собой
