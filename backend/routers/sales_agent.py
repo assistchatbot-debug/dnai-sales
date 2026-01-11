@@ -57,6 +57,33 @@ from slowapi.util import get_remote_address
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(prefix='/sales', tags=['sales_agent'])
 
+
+async def send_lead_to_bitrix24(lead_id: int, company_id: int, db: AsyncSession):
+    """Send lead to Bitrix24 if integration enabled"""
+    try:
+        from models import Company, Lead
+        result = await db.execute(select(Company).where(Company.id == company_id))
+        company = result.scalars().first()
+        if not company or not company.integration_enabled or company.integration_type != 'bitrix24' or not company.bitrix24_webhook_url:
+            return False
+        result = await db.execute(select(Lead).where(Lead.id == lead_id))
+        lead = result.scalars().first()
+        if not lead:
+            return False
+        contact_info = lead.contact_info or {}
+        data = {'TITLE': f"Лид с {lead.source or 'виджета'}", 'NAME': contact_info.get('name', ''), 'PHONE': [{'VALUE': contact_info.get('phone', ''), 'VALUE_TYPE': 'WORK'}], 'SOURCE_ID': 'WEB', 'COMMENTS': f"Температура: {contact_info.get('temperature', 'теплый')}\nПлатформа: {lead.messenger_platform or 'Web'}"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(f"{company.bitrix24_webhook_url}crm.lead.add.json", json={'fields': data})
+            if response.status_code == 200:
+                logging.info(f'✅ Lead {lead_id} sent to Bitrix24 for company {company_id}')
+                return True
+            else:
+                logging.error(f'❌ Bitrix24 error: {response.status_code}')
+                return False
+    except Exception as e:
+        logging.error(f'❌ send_lead_to_bitrix24: {e}')
+        return False
+
 async def translate_greeting(text: str, target_lang: str) -> str:
     """Translate greeting using OpenRouter AI (Claude 3 Haiku)"""
     lang_map = {
@@ -270,6 +297,10 @@ async def sales_chat(request: Request, company_id: int, chat_data: ChatMessage, 
         source = chat_data.source or 'web'
         logging.info(f'📥 Incoming: user_id={user_id}, source={source}, username={chat_data.username}')
         lead = await get_or_create_lead(db, company_id, user_id, chat_data.username, chat_data.new_session)
+        try:
+            asyncio.create_task(send_lead_to_bitrix24(lead.id, company_id, db))
+        except Exception as e:
+            logging.error(f'Bitrix24 task error: {e}')
         logging.info(f'📊 Lead created/found: id={lead.id}, telegram_user_id={lead.telegram_user_id}')
         if lead.source != source:
             lead.source = source
