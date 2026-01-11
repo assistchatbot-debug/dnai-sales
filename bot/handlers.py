@@ -18,6 +18,7 @@ def get_manager_keyboard():
             [KeyboardButton(text="📊 Статус"), KeyboardButton(text="📋 Лиды")],
             [KeyboardButton(text="📢 Каналы"), KeyboardButton(text="🌐 Виджет")],
             [KeyboardButton(text="💳 Тарифы"), KeyboardButton(text="🌍 Язык")],
+            [KeyboardButton(text="🔌 Интеграция CRM")],
             [KeyboardButton(text="📊 Лиды за неделю"), KeyboardButton(text="📅 Лиды за месяц")],
             [KeyboardButton(text="🏠 Меню")]
         ],
@@ -624,6 +625,41 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
             parse_mode='HTML'
         )
     
+    elif 'интеграция' in text_lower or 'integration' in text_lower or 'crm' in text_lower:
+        company_id = getattr(message.bot, 'company_id', 1)
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f'{API_BASE_URL}/sales/companies/all') as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        companies = data if isinstance(data, list) else []
+                        company = next((c for c in companies if c.get('id') == company_id), None)
+                        
+                        if company:
+                            enabled = company.get('integration_enabled', False)
+                            itype = company.get('integration_type', 'CRM')
+                            
+                            if enabled:
+                                text = f"✅ <b>Интеграция {itype.upper()} активна</b>\n\n"
+                                text += "Лиды из виджетов автоматически отправляются в CRM."
+                                btn_text = "❌ Выключить интеграцию"
+                            else:
+                                text = "❌ <b>Интеграция CRM выключена</b>\n\n"
+                                text += "Лиды сохраняются только в BizDNAi."
+                                btn_text = "✅ Включить интеграцию"
+                            
+                            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                            kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=btn_text, callback_data="toggle_crm_integration")]])
+                            
+                            await message.answer(text, parse_mode='HTML', reply_markup=kb)
+                        else:
+                            await message.answer("⚠️ Компания не найдена")
+                    else:
+                        await message.answer("⚠️ Ошибка получения данных")
+        except Exception as e:
+            logging.error(f"Integration check error: {e}")
+            await message.answer(f"❌ Ошибка: {str(e)[:50]}")
+    
     elif 'виджет' in text_lower or 'widget' in text_lower:
         company_id = getattr(message.bot, 'company_id', 1)
         try:
@@ -1009,6 +1045,58 @@ async def process_edit_domain(message: types.Message, state: FSMContext):
         await message.answer(f"❌ Ошибка: {str(e)[:100]}")
     finally:
         await state.clear()
+
+
+@router.callback_query(F.data == "toggle_crm_integration")
+async def toggle_crm_integration_callback(callback: types.CallbackQuery):
+    """Toggle CRM integration ON/OFF for manager"""
+    if not is_manager(callback.from_user.id, callback.bot):
+        await callback.answer("❌ Недостаточно прав", show_alert=True)
+        return
+    
+    company_id = getattr(callback.bot, 'company_id', 1)
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            # Get current status
+            async with session.get(f'{API_BASE_URL}/sales/companies/all') as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    companies = data if isinstance(data, list) else []
+                    company = next((c for c in companies if c.get('id') == company_id), None)
+                    
+                    if company:
+                        new_status = not company.get('integration_enabled', False)
+                        
+                        # Update in DB
+                        async with session.post(
+                            f'{API_BASE_URL}/sales/company/upsert',
+                            json={'id': company_id, 'integration_enabled': new_status}
+                        ) as update_resp:
+                            if update_resp.status == 200:
+                                status_text = "включена ✅" if new_status else "выключена ❌"
+                                await callback.answer(f"Интеграция {status_text}")
+                                
+                                # Update message
+                                itype = company.get('integration_type', 'CRM')
+                                if new_status:
+                                    text = f"✅ <b>Интеграция {itype.upper()} активна</b>\n\nЛиды из виджетов автоматически отправляются в CRM."
+                                    btn_text = "❌ Выключить интеграцию"
+                                else:
+                                    text = "❌ <b>Интеграция CRM выключена</b>\n\nЛиды сохраняются только в BizDNAi."
+                                    btn_text = "✅ Включить интеграцию"
+                                
+                                from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                                kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=btn_text, callback_data="toggle_crm_integration")]])
+                                
+                                await callback.message.edit_text(text, parse_mode='HTML', reply_markup=kb)
+                            else:
+                                await callback.answer("❌ Ошибка обновления", show_alert=True)
+                    else:
+                        await callback.answer("❌ Компания не найдена", show_alert=True)
+    except Exception as e:
+        logging.error(f"Toggle CRM integration error: {e}")
+        await callback.answer("❌ Ошибка", show_alert=True)
 
 @router.message()
 async def handle_text(message: types.Message, state: FSMContext):

@@ -3,6 +3,8 @@ from fastapi.responses import HTMLResponse
 import httpx
 import os
 import logging
+import asyncio
+import asyncio
 
 async def analyze_lead_temperature(history: list) -> str:
     """Analyze conversation to determine lead temperature"""
@@ -59,29 +61,76 @@ router = APIRouter(prefix='/sales', tags=['sales_agent'])
 
 
 async def send_lead_to_bitrix24(lead_id: int, company_id: int, db: AsyncSession):
-    """Send lead to Bitrix24 if integration enabled"""
+    """Send lead to Bitrix24 as DEAL with contact info and AI summary"""
     try:
-        from models import Company, Lead
+        from models import Company, Lead, Interaction
+        from services.ai_service import ai_service
+        
         result = await db.execute(select(Company).where(Company.id == company_id))
         company = result.scalars().first()
         if not company or not company.integration_enabled or company.integration_type != 'bitrix24' or not company.bitrix24_webhook_url:
+            logging.info(f'🔌 Bitrix24 not enabled for company {company_id}')
             return False
+        
         result = await db.execute(select(Lead).where(Lead.id == lead_id))
         lead = result.scalars().first()
         if not lead:
             return False
+        
         contact_info = lead.contact_info or {}
-        data = {'TITLE': f"Лид с {lead.source or 'виджета'}", 'NAME': contact_info.get('name', ''), 'PHONE': [{'VALUE': contact_info.get('phone', ''), 'VALUE_TYPE': 'WORK'}], 'SOURCE_ID': 'WEB', 'COMMENTS': f"Температура: {contact_info.get('temperature', 'теплый')}\nПлатформа: {lead.messenger_platform or 'Web'}"}
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(f"{company.bitrix24_webhook_url}crm.lead.add.json", json={'fields': data})
-            if response.status_code == 200:
-                logging.info(f'✅ Lead {lead_id} sent to Bitrix24 for company {company_id}')
+        name = contact_info.get('name', '')
+        phone = contact_info.get('phone', '')
+        
+        # Get conversation history for AI summary
+        result = await db.execute(select(Interaction).where(Interaction.lead_id == lead_id).order_by(Interaction.created_at.asc()))
+        interactions = result.scalars().all()
+        history = []
+        for i in interactions:
+            if i.content and i.content not in ['received', 'sent', '[system: request confirmation]']:
+                history.append({'sender': 'user', 'text': i.content})
+            if i.outcome and i.outcome not in ['received', 'sent']:
+                history.append({'sender': 'bot', 'text': i.outcome})
+        
+        # Generate AI summary
+        ai_summary = "Новый лид"
+        if history:
+            try:
+                ai_summary = await ai_service.generate_conversation_summary(history[-20:], 'ru', manager_language='ru')
+            except:
+                ai_summary = "Ошибка генерации AI анализа"
+        
+        # Create DEAL in Bitrix24
+        source_name = lead.source if lead.source and not str(lead.source).isdigit() else f"Widget #{lead.source}"
+        deal_data = {
+            'TITLE': f"Лид с {source_name} - {name or 'Без имени'}",
+            'STAGE_ID': 'NEW',
+            
+            'COMMENTS': ai_summary
+        }
+        
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            # First create contact
+            contact_data = {'NAME': name, 'PHONE': [{'VALUE': phone, 'VALUE_TYPE': 'WORK'}]}
+            contact_resp = await client.post(f"{company.bitrix24_webhook_url}crm.contact.add.json", json={'fields': contact_data})
+            
+            if contact_resp.status_code == 200:
+                contact_id = contact_resp.json().get('result')
+                deal_data['CONTACT_ID'] = contact_id
+            
+            # Create deal
+            deal_resp = await client.post(f"{company.bitrix24_webhook_url}crm.deal.add.json", json={'fields': deal_data})
+            
+            if deal_resp.status_code == 200:
+                deal_id = deal_resp.json().get('result', 'unknown')
+                logging.info(f'✅ Lead {lead_id} sent to Bitrix24 as DEAL #{deal_id} for company {company_id}')
                 return True
             else:
-                logging.error(f'❌ Bitrix24 error: {response.status_code}')
+                logging.error(f'❌ Bitrix24 API error: {deal_resp.status_code} - {deal_resp.text[:100]}')
                 return False
     except Exception as e:
         logging.error(f'❌ send_lead_to_bitrix24: {e}')
+        import traceback
+        traceback.print_exc()
         return False
 
 async def translate_greeting(text: str, target_lang: str) -> str:
@@ -297,10 +346,6 @@ async def sales_chat(request: Request, company_id: int, chat_data: ChatMessage, 
         source = chat_data.source or 'web'
         logging.info(f'📥 Incoming: user_id={user_id}, source={source}, username={chat_data.username}')
         lead = await get_or_create_lead(db, company_id, user_id, chat_data.username, chat_data.new_session)
-        try:
-            asyncio.create_task(send_lead_to_bitrix24(lead.id, company_id, db))
-        except Exception as e:
-            logging.error(f'Bitrix24 task error: {e}')
         logging.info(f'📊 Lead created/found: id={lead.id}, telegram_user_id={lead.telegram_user_id}')
         if lead.source != source:
             lead.source = source
@@ -507,6 +552,11 @@ async def sales_chat(request: Request, company_id: int, chat_data: ChatMessage, 
                 company_id=company_id
             )
             logging.info(f'📬 Background task added for Telegram & Email notifications')
+            # Send to Bitrix24 CRM if integration enabled
+            try:
+                asyncio.create_task(send_lead_to_bitrix24(lead_id, company_id, db))
+            except Exception as e:
+                logging.error(f"Bitrix24 task error: {e}")
         
         return {'session_id': session_id, 'response': ai_response, 'action': 'continue'}
         
