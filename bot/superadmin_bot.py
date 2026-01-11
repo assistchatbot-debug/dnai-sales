@@ -50,9 +50,19 @@ class CompanyFlow(StatesGroup):
     entering_tier_days = State()
     selecting_company_for_extend = State()
     entering_extend_days = State()
+    # Integration states
+    editing_integration_type = State()
+    editing_onec_url = State()
+    editing_onec_user = State()
+    editing_onec_pass = State()
+    editing_bitrix_webhook = State()
+    editing_kommo_subdomain = State()
+    editing_kommo_client_id = State()
+    editing_kommo_client_secret = State()
+    editing_kommo_refresh_token = State()
 
 def get_main_keyboard():
-    return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📊 Компании"), KeyboardButton(text="📈 Лиды")],[KeyboardButton(text="💳 Тарифы"), KeyboardButton(text="⚙️ Статус")],[KeyboardButton(text="🌐 Виджет"), KeyboardButton(text="🏠 Меню")]], resize_keyboard=True)
+    return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📊 Компании"), KeyboardButton(text="📈 Лиды")],[KeyboardButton(text="💳 Тарифы"), KeyboardButton(text="⚙️ Статус")],[KeyboardButton(text="🌐 Виджет"), KeyboardButton(text="🔌 Интеграции")],[KeyboardButton(text="🏠 Меню")]], resize_keyboard=True)
 
 def get_company_menu_keyboard():
     return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="➕ Создать компанию"), KeyboardButton(text="✏️ Редактировать компанию")],[KeyboardButton(text="📋 Список компаний"), KeyboardButton(text="🎭 Web Avatar")],[KeyboardButton(text="🎯 Установить тариф"), KeyboardButton(text="⏰ Продлить тариф")],[KeyboardButton(text="◀️ Назад")]], resize_keyboard=True)
@@ -266,7 +276,7 @@ async def start_create_company(message: types.Message, state: FSMContext):
 
 @dp.message(CompanyFlow.viewing_list, F.text == "✏️ Редактировать компанию")
 async def start_edit_company(message: types.Message, state: FSMContext):
-    await state.set_state(CompanyFlow.selecting_for_edit)
+    await state.set_state(IntegrationFlow.selecting_company)
     await message.answer("🔍 <b>Редактирование</b>\n\nВведите ID компании:", parse_mode='HTML')
 
 @dp.message(CompanyFlow.selecting_for_edit)
@@ -628,6 +638,7 @@ async def select_company_for_tier(message: types.Message, state: FSMContext):
         if 0 <= num < len(companies):
             company = companies[num]
             await state.update_data(selected_company=company)
+            await state.set_state(IntegrationFlow.editing_settings)
             kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="free"), KeyboardButton(text="basic")],[KeyboardButton(text="pro"), KeyboardButton(text="enterprise")],[KeyboardButton(text="◀️ Назад")]], resize_keyboard=True)
             await state.set_state(CompanyFlow.selecting_tier)
             await message.answer(f"🎯 Компания: <b>{company['name']}</b>\n\nВыберите тариф:", parse_mode='HTML', reply_markup=kb)
@@ -703,6 +714,7 @@ async def select_company_for_extend(message: types.Message, state: FSMContext):
         if 0 <= num < len(companies):
             company = companies[num]
             await state.update_data(selected_company=company)
+            await state.set_state(IntegrationFlow.editing_settings)
             await state.set_state(CompanyFlow.entering_extend_days)
             await message.answer(f"⏰ Продление: <b>{company['name']}</b>\n\nВведите дней:", parse_mode='HTML', reply_markup=ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="7"), KeyboardButton(text="14"), KeyboardButton(text="30")],[KeyboardButton(text="90"), KeyboardButton(text="180"), KeyboardButton(text="365")]], resize_keyboard=True))
     except ValueError:
@@ -738,6 +750,269 @@ async def enter_extend_days(message: types.Message, state: FSMContext):
     except Exception as e:
         await message.answer(f"❌ {str(e)[:40]}")
         await state.clear()
+
+
+@dp.message(F.text == "🔌 Интеграции")
+async def btn_integrations(message: types.Message, state: FSMContext):
+    """Manage integrations"""
+    await state.clear()
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f'{API_BASE_URL}/sales/companies/all') as resp:
+                if resp.status == 200:
+                    companies = await resp.json()
+                    if not companies:
+                        await message.answer("📋 Нет компаний")
+                        return
+                    text = "🔌 <b>Интеграции 1С-CRM</b>\n\nВыберите компанию:\n\n"
+                    for i, c in enumerate(companies, 1):
+                        enabled = '✅' if c.get('integration_enabled') else '❌'
+                        itype = c.get('integration_type') or 'нет'
+                        text += f"{i}. {c['name']} — {enabled} {itype}\n"
+                    await state.update_data(companies=companies)
+                    await state.set_state(IntegrationFlow.selecting_company)
+                    await message.answer(text, parse_mode='HTML')
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {str(e)[:40]}")
+
+
+class IntegrationFlow(StatesGroup):
+    selecting_company = State()
+    editing_type = State()
+    editing_settings = State()
+    editing_onec_url = State()
+    editing_onec_username = State()
+    editing_onec_password = State()
+    editing_bitrix_webhook = State()
+    editing_kommo_subdomain = State()
+    editing_kommo_client_id = State()
+    editing_kommo_client_secret = State()
+    editing_kommo_refresh_token = State()
+
+@dp.message(IntegrationFlow.selecting_company)
+async def select_integration_company(message: types.Message, state: FSMContext):
+    """Выбор компании для настройки интеграции"""
+    try:
+        num = int(message.text.strip()) - 1
+        data = await state.get_data()
+        companies = data.get('companies', [])
+        if 0 <= num < len(companies):
+            company = companies[num]
+            
+            # Показываем текущие настройки
+            enabled = '✅ Включена' if company.get('integration_enabled') else '❌ Выключена'
+            itype = company.get('integration_type') or 'не выбран'
+            
+            text = f"🔌 <b>Интеграция: {company['name']}</b>\n\n"
+            text += f"Статус: {enabled}\n"
+            text += f"Тип CRM: {itype}\n\n"
+            
+            if company.get('onec_base_url'):
+                text += f"1С: {company['onec_base_url'][:50]}...\n"
+            if company.get('bitrix24_webhook_url'):
+                text += f"Bitrix24: {company['bitrix24_webhook_url'][:50]}...\n"
+            if company.get('kommo_subdomain'):
+                text += f"KOMMO: {company['kommo_subdomain']}\n"
+            
+            # Кнопки управления
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(
+                    text="❌ Выключить" if company.get('integration_enabled') else "✅ Включить",
+                    callback_data=f"toggle_int_{company['id']}"
+                )],
+                [InlineKeyboardButton(text="⚙️ Настроить", callback_data=f"setup_int_{company['id']}")]
+            ])
+            
+            await state.update_data(selected_company=company)
+            await state.set_state(IntegrationFlow.editing_settings)
+            await message.answer(text, parse_mode='HTML', reply_markup=kb)
+        else:
+            await message.answer("❌ Неверный номер")
+    except ValueError:
+        await message.answer("❌ Введите номер")
+
+@dp.callback_query(lambda c: c.data.startswith('toggle_int_'))
+async def toggle_integration(callback: types.CallbackQuery):
+    """Включить/выключить интеграцию"""
+    company_id = int(callback.data.split('_')[2])
+    async with aiohttp.ClientSession() as session:
+        try:
+            # Получаем компанию
+            async with session.get(f'{API_BASE_URL}/sales/companies/all') as resp:
+                companies = await resp.json()
+                company = next((c for c in companies if c['id'] == company_id), None)
+                if company:
+                    new_status = not company.get('integration_enabled', False)
+                    # Обновляем
+                    await session.post(f'{API_BASE_URL}/sales/company/upsert', 
+                                      json={'id': company_id, 'integration_enabled': new_status})
+                    status_text = '✅ Включена' if new_status else '❌ Выключена'
+                    await callback.answer(f"Интеграция: {status_text}")
+                    # Показываем обновленный статус с кнопками
+                    kb = InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(
+                            text="❌ Выключить" if new_status else "✅ Включить",
+                            callback_data=f"toggle_int_{company_id}"
+                        )],
+                        [InlineKeyboardButton(text="⚙️ Настроить", callback_data=f"setup_int_{company_id}")]
+                    ])
+                    await callback.message.edit_text(
+                        f"🔌 Интеграция для {company['name']}: {status_text}",
+                        reply_markup=kb
+                    )
+        except Exception as e:
+            await callback.answer(f"❌ Ошибка: {str(e)[:40]}")
+
+@dp.callback_query(lambda c: c.data.startswith('setup_int_'))
+async def setup_integration(callback: types.CallbackQuery, state: FSMContext):
+    """Настройка интеграции"""
+    company_id = int(callback.data.split('_')[2])
+    
+    text = "⚙️ <b>Настройка интеграции</b>\n\nВыберите тип CRM:\n\n"
+    text += "1️⃣ Bitrix24\n"
+    text += "2️⃣ KOMMO\n"
+    text += "3️⃣ AmoCRM\n\n"
+    text += "Введите номер:"
+    
+    await state.update_data(company_id=company_id)
+    await state.set_state(IntegrationFlow.editing_type)
+    await callback.message.answer(text, parse_mode='HTML')
+    await callback.answer()
+
+@dp.message(IntegrationFlow.editing_type)
+async def process_integration_type(message: types.Message, state: FSMContext):
+    """Сохранение типа CRM и начало настройки 1С"""
+    types_map = {'1': 'bitrix24', '2': 'kommo', '3': 'amocrm'}
+    itype = types_map.get(message.text.strip())
+    
+    if not itype:
+        await message.answer("❌ Введите 1, 2 или 3")
+        return
+    
+    await state.update_data(integration_type=itype)
+    await state.set_state(IntegrationFlow.editing_onec_url)
+    await message.answer(
+        f"✅ Тип CRM: {itype.upper()}\n\n"
+        f"<b>Шаг 1/3: 1С OData URL</b>\n\n"
+        f"Пример: http://2.133.147.210:8081/company_Technology\n\n"
+        f"Введите URL 1С:",
+        parse_mode='HTML'
+    )
+
+@dp.message(IntegrationFlow.editing_onec_url)
+async def process_onec_url(message: types.Message, state: FSMContext):
+    """Ввод 1С URL"""
+    await state.update_data(onec_base_url=message.text.strip())
+    await state.set_state(IntegrationFlow.editing_onec_username)
+    await message.answer("<b>Шаг 2/3: 1С Username</b>\n\nВведите логин:", parse_mode='HTML')
+
+@dp.message(IntegrationFlow.editing_onec_username)
+async def process_onec_username(message: types.Message, state: FSMContext):
+    """Ввод 1С username"""
+    await state.update_data(onec_username=message.text.strip())
+    await state.set_state(IntegrationFlow.editing_onec_password)
+    await message.answer("<b>Шаг 3/3: 1С Password</b>\n\nВведите пароль:", parse_mode='HTML')
+
+@dp.message(IntegrationFlow.editing_onec_password)
+async def process_onec_password(message: types.Message, state: FSMContext):
+    """Ввод 1С password и переход к настройке CRM"""
+    await state.update_data(onec_password=message.text.strip())
+    
+    data = await state.get_data()
+    itype = data.get('integration_type')
+    
+    if itype == 'bitrix24':
+        await state.set_state(IntegrationFlow.editing_bitrix_webhook)
+        await message.answer(
+            "<b>Bitrix24 Webhook URL</b>\n\n"
+            "Пример: https://company.bitrix24.ru/rest/1/xxxxx/\n\n"
+            "Введите webhook:",
+            parse_mode='HTML'
+        )
+    elif itype in ['kommo', 'amocrm']:
+        await state.set_state(IntegrationFlow.editing_kommo_subdomain)
+        await message.answer(
+            f"<b>{itype.upper()} Subdomain</b>\n\n"
+            f"Пример: mycompany\n\n"
+            f"Введите subdomain:",
+            parse_mode='HTML'
+        )
+
+@dp.message(IntegrationFlow.editing_bitrix_webhook)
+async def process_bitrix_webhook(message: types.Message, state: FSMContext):
+    """Ввод Bitrix24 webhook и сохранение"""
+    await state.update_data(bitrix24_webhook_url=message.text.strip())
+    await save_integration_settings(message, state)
+
+@dp.message(IntegrationFlow.editing_kommo_subdomain)
+async def process_kommo_subdomain(message: types.Message, state: FSMContext):
+    """Ввод KOMMO subdomain"""
+    await state.update_data(kommo_subdomain=message.text.strip())
+    await state.set_state(IntegrationFlow.editing_kommo_client_id)
+    await message.answer("<b>KOMMO Client ID</b>\n\nВведите:", parse_mode='HTML')
+
+@dp.message(IntegrationFlow.editing_kommo_client_id)
+async def process_kommo_client_id(message: types.Message, state: FSMContext):
+    """Ввод KOMMO client ID"""
+    await state.update_data(kommo_client_id=message.text.strip())
+    await state.set_state(IntegrationFlow.editing_kommo_client_secret)
+    await message.answer("<b>KOMMO Client Secret</b>\n\nВведите:", parse_mode='HTML')
+
+@dp.message(IntegrationFlow.editing_kommo_client_secret)
+async def process_kommo_client_secret(message: types.Message, state: FSMContext):
+    """Ввод KOMMO client secret"""
+    await state.update_data(kommo_client_secret=message.text.strip())
+    await state.set_state(IntegrationFlow.editing_kommo_refresh_token)
+    await message.answer("<b>KOMMO Refresh Token</b>\n\nВведите:", parse_mode='HTML')
+
+@dp.message(IntegrationFlow.editing_kommo_refresh_token)
+async def process_kommo_refresh_token(message: types.Message, state: FSMContext):
+    """Ввод KOMMO refresh token и сохранение"""
+    await state.update_data(kommo_refresh_token=message.text.strip())
+    await save_integration_settings(message, state)
+
+async def save_integration_settings(message: types.Message, state: FSMContext):
+    """Сохранение всех настроек интеграции"""
+    data = await state.get_data()
+    company_id = data.get('company_id')
+    
+    # Подготавливаем данные для сохранения
+    save_data = {
+        'id': company_id,
+        'integration_enabled': True,
+        'integration_type': data.get('integration_type'),
+        'onec_enabled': True,
+        'onec_base_url': data.get('onec_base_url'),
+        'onec_username': data.get('onec_username'),
+        'onec_password': data.get('onec_password')
+    }
+    
+    # Добавляем CRM-специфичные поля
+    if data.get('bitrix24_webhook_url'):
+        save_data['bitrix24_webhook_url'] = data.get('bitrix24_webhook_url')
+    if data.get('kommo_subdomain'):
+        save_data['kommo_subdomain'] = data.get('kommo_subdomain')
+        save_data['kommo_client_id'] = data.get('kommo_client_id')
+        save_data['kommo_client_secret'] = data.get('kommo_client_secret')
+        save_data['kommo_refresh_token'] = data.get('kommo_refresh_token')
+    
+    async with aiohttp.ClientSession() as session:
+        try:
+            await session.post(f'{API_BASE_URL}/sales/company/upsert', json=save_data)
+            itype = data.get('integration_type', '').upper()
+            await message.answer(
+                f"✅ <b>Интеграция настроена!</b>\n\n"
+                f"Тип: {itype}\n"
+                f"1С: {data.get('onec_base_url')}\n"
+                f"Статус: Активна\n\n"
+                f"Используйте /start для возврата в меню.",
+                parse_mode='HTML',
+                reply_markup=get_main_keyboard()
+            )
+            await state.clear()
+        except Exception as e:
+            await message.answer(f"❌ Ошибка сохранения: {str(e)[:100]}")
+
 
 @dp.message(F.text == "🏠 Меню")
 async def btn_menu(message: types.Message, state: FSMContext):

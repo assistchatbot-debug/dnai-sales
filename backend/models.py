@@ -48,11 +48,51 @@ class Company(Base):
     leads_reset_date = Column(DateTime, nullable=True)
     
     
+    
+    # === Интеграции 1С-CRM ===
+    integration_enabled = Column(Boolean, default=False)
+    integration_type = Column(String, nullable=True)  # 'bitrix24', 'kommo', 'amocrm'
+    
+    # 1С OData (общие для всех CRM)
+    onec_enabled = Column(Boolean, default=False)
+    onec_base_url = Column(String, nullable=True)
+    onec_username = Column(String, nullable=True)
+    onec_password = Column(String, nullable=True)
+    
+    # Bitrix24
+    bitrix24_webhook_url = Column(String, nullable=True)
+    
+    # KOMMO/AmoCRM
+    kommo_subdomain = Column(String, nullable=True)
+    kommo_client_id = Column(String, nullable=True)
+    kommo_client_secret = Column(String, nullable=True)
+    kommo_refresh_token = Column(Text, nullable=True)
+
     # Relationships
     web_widgets = relationship("WebWidget", back_populates="company")
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
+    
+    # === Интеграции 1С-CRM ===
+    integration_enabled = Column(Boolean, default=False)
+    integration_type = Column(String, nullable=True)  # 'bitrix24', 'kommo', 'amocrm'
+    
+    # 1С OData (общие для всех CRM)
+    onec_enabled = Column(Boolean, default=False)
+    onec_base_url = Column(String, nullable=True)
+    onec_username = Column(String, nullable=True)
+    onec_password = Column(String, nullable=True)
+    
+    # Bitrix24
+    bitrix24_webhook_url = Column(String, nullable=True)
+    
+    # KOMMO/AmoCRM
+    kommo_subdomain = Column(String, nullable=True)
+    kommo_client_id = Column(String, nullable=True)
+    kommo_client_secret = Column(String, nullable=True)
+    kommo_refresh_token = Column(Text, nullable=True)
+
     # Relationships
     products = relationship("Product", back_populates="company")
     leads = relationship("Lead", back_populates="company")
