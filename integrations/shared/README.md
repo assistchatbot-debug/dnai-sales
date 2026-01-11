@@ -35,8 +35,11 @@
                           │  1С:Бухгалтерия   │
                           │  OData Endpoint   │
                           └───────────────────┘
+
 Telegram Bot (Polling) ──▶ Analytics Service ──▶ CRM API
+
 📁 Структура проекта
+
 /root/dnai-sales/
 └── integrations/
     ├── shared/                         # Общие компоненты
@@ -55,34 +58,56 @@ Telegram Bot (Polling) ──▶ Analytics Service ──▶ CRM API
         │   └── logs/
         │
         └── kommo/                      # Клиент 2 (будущий)
+
 ⚙️ Переменные окружения (.env)
+
 Bitrix24
+
 BITRIX24_WEBHOOK_URL=https://company.bitrix24.ru/rest/1/xxxxx/
+
 Получение: Приложения → Вебхуки → Входящий вебхук
+
 Использование: bitrix24_client.py - все API запросы
+
 1С OData
+
 ONEC_BASE_URL=http://2.133.147.210:8081/company_Technology
+
 ONEC_USERNAME=odata.user
+
 ONEC_PASSWORD=@Technology26
+
 Формат: http://IP:PORT/база_данных
+
 Использование: onec_client.py - накладные, остатки
+
 PostgreSQL
+
 DATABASE_URL=postgresql+asyncpg://user:pass@host/db
+
 Использование: Хранение маппинга, логов
+
 Telegram
+
 TELEGRAM_BOT_TOKEN=7622964199:AAF_xxxxx
+
 TELEGRAM_CHAT_ID=803934700
+
 Получение: @BotFather и @userinfobot
 Использование: Уведомления, аналитика
+
 🚀 Быстрый старт нового клиента
+
 Шаг 1: Создание структуры
 cd /root/dnai-sales/integrations/clients
 mkdir новый_клиент && cd новый_клиент
+
 Шаг 2: Копирование шаблона
 cp -r ../morozov/*.py ./
 cp ../morozov/docker-compose.yml ./
 cp ../morozov/Dockerfile ./
 cp ../morozov/requirements.txt ./
+
 Шаг 3: Создание .env
 cat > .env << 'EOF'
 BITRIX24_WEBHOOK_URL=https://новый-клиент.bitrix24.ru/rest/1/xxxxx/
@@ -93,6 +118,7 @@ DATABASE_URL=postgresql+asyncpg://новый:pass@localhost/новый_db
 TELEGRAM_BOT_TOKEN=123:ABC
 TELEGRAM_CHAT_ID=123456
 EOF
+
 Шаг 4: Обновление docker-compose.yml
 Изменить:
 
@@ -144,6 +170,7 @@ sync_service: get_stock_balances()
 bitrix24_client: update_product_quantity()
     ↓
 Telegram: Отчёт синхронизации
+
 🔌 KOMMO CRM Integration
 Отличия от Bitrix24
 Параметр	Bitrix24	KOMMO
@@ -157,8 +184,10 @@ Client ID
 Client Secret
 Refresh Token (через OAuth)
 Процесс авторизации KOMMO
+
 # Шаг 1: Получить код авторизации
 https://www.amocrm.ru/oauth?client_id=ID&state=random&mode=post_message
+
 # Шаг 2: Обменять на токены
 curl -X POST https://mycompany.kommo.com/oauth2/access_token \
   -d "client_id=ID" \
@@ -166,6 +195,7 @@ curl -X POST https://mycompany.kommo.com/oauth2/access_token \
   -d "grant_type=authorization_code" \
   -d "code=CODE" \
   -d "redirect_uri=https://example.com"
+
 # Сохранить refresh_token в .env!
 .env для KOMMO
 KOMMO_SUBDOMAIN=mycompany
@@ -198,6 +228,7 @@ async def _call(self, method, endpoint, **kwargs):
         await asyncio.sleep(1)  # Retry через 1 сек
         return await self._call(method, endpoint, **kwargs)
     return response.json()
+
 🗄️ База данных
 Таблицы PostgreSQL
 -- Логи синхронизации
@@ -237,4 +268,148 @@ curl -u "user:pass" "http://1c:8080/base/odata/standard.odata/"
 Дата: 11 января 2026
 Версия: 2.0
 
+Integration Setup - BizDNAi System Architecture
+🏗 System Components
+
+1. SuperAdmin Bot
+Location: /root/dnai-sales/bot/superadmin_bot.py
+Process: Runs on HOST via nohup python3 superadmin_bot.py &
+Logs: /tmp/superadmin.log
+API: http://localhost:8005 (backend)
+
+2. Backend API
+Location: /root/dnai-sales/backend/
+Process: Docker container bizdnaii_backend
+Port: 8005:8000
+Database: PostgreSQL on DigitalOcean
+
+3. Client Middleware (e.g., Morozov)
+Location: /root/dnai-sales/integrations/clients/morozov/
+Process: Docker container bitrix_1c_middleware
+Port: 8008
+Purpose: Bitrix24 ↔ 1C integration
+
+⚙️ Configuration Flow
+OLD (DEPRECATED ❌)
+Middleware reads .env → Hardcoded credentials
+
+NEW (ACTIVE ✅)
+SuperAdmin Bot → Backend API → PostgreSQL → Middleware loads from DB
+🔌 Setup Integration for New Client
+Step 1: Configure via SuperAdmin Bot
+Telegram → SuperAdmin bot
+🔌 Интеграции → Select company
+⚙️ Настроить → Choose CRM type
+Enter:
+1C: URL, username, password
+Bitrix24: webhook URL
+OR KOMMO: subdomain, client_id, client_secret, refresh_token
+
+✅ Settings saved to PostgreSQL
+Step 2: Create Client Middleware
+
+# Copy template
+cp -r /root/dnai-sales/integrations/clients/morozov \
+      /root/dnai-sales/integrations/clients/NEW_CLIENT
+cd /root/dnai-sales/integrations/clients/NEW_CLIENT
+
+# Update config.py - ONLY change company_id
+vi config.py
+
+# Change: self.company_id = 7  →  self.company_id = <NEW_ID>
+
+# Create .env with ONLY DATABASE_URL
+cat > .env << 'EOF'
+DATABASE_URL=postgresql+asyncpg://USER:PASS@HOST:PORT/DB?ssl=require
+EOF
+
+# Update docker-compose.yml
+vi docker-compose.yml
+
+# Change: container_name, ports
+
+# Start
+docker-compose up -d
+
+# Verify
+docker logs <container_name> | grep "Loaded from DB"
+
+# Expected: "✅ Loaded from DB successfully!"
+🗄 Database Schema
+companies Table - Integration Fields
+integration_enabled BOOLEAN DEFAULT FALSE
+integration_type VARCHAR  -- 'bitrix24', 'kommo', 'amocrm'
+-- 1C OData
+onec_enabled BOOLEAN DEFAULT FALSE
+onec_base_url VARCHAR
+onec_username VARCHAR
+onec_password VARCHAR
+-- Bitrix24
+bitrix24_webhook_url VARCHAR
+-- KOMMO/AmoCRM
+kommo_subdomain VARCHAR
+kommo_client_id VARCHAR
+kommo_client_secret VARCHAR
+kommo_refresh_token TEXT
+🚨 Critical Issues & Solutions
+Issue 1: API returns integration_enabled: null
+Problem: Backend didn't restart after models.py update
+Solution:
+
+docker-compose restart backend
+Issue 2: Middleware uses empty fallback
+Problem: /companies/all endpoint doesn't return integration fields
+Solution: Check sales_agent.py includes integration fields in return dict
+
+Issue 3: Settings not saved to DB
+Problem: /company/upsert endpoint doesn't process integration fields
+Solution: Add if 'integration_enabled' in data: blocks in upsert handler
+
+Issue 4: Changes not in container
+Problem: Docker cached old files
+Solution:
+
+docker-compose down
+docker-compose build --no-cache
+docker-compose up -d
+
+✅ Verification Checklist
+
+# 1. Database
+psql -h <HOST> -U <USER> -d <DB> -c \
+  "SELECT integration_enabled, integration_type FROM companies WHERE id=7;"
+
+# Expected: t | bitrix24
+
+# 2. API
+curl http://localhost:8005/sales/companies/all | jq '.[] | select(.id==7)'
+
+# Should return integration fields
+
+# 3. Middleware logs
+docker logs <container> | grep "Loaded from DB"
+
+# Expected: "✅ Loaded from DB successfully!"
+📝 Modified Files (Jan 11, 2026)
+backend/models.py - Added 11 integration fields to Company model
+backend/routers/sales_agent.py - Updated /company/upsert and /companies/all endpoints
+bot/superadmin_bot.py - Added IntegrationFlow FSM states and handlers
+integrations/clients/morozov/config.py - Loads from DB via API
+🔄 Restart Commands
+
+# Backend
+cd /root/dnai-sales
+docker-compose restart backend
+
+# SuperAdmin Bot
+pkill -f superadmin_bot
+cd /root/dnai-sales/bot
+nohup python3 superadmin_bot.py > /tmp/superadmin.log 2>&1 &
+
+# Middleware (e.g., Morozov)
+cd /root/dnai-sales/integrations/clients/morozov
+docker-compose restart
+Last Updated: January 11, 2026
+Duration: 2 hours (40 min bot + 80 min migration)
+Status: ✅ Production - All integrations from Database
 
