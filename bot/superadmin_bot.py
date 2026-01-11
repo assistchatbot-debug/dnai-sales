@@ -276,7 +276,19 @@ async def start_create_company(message: types.Message, state: FSMContext):
 
 @dp.message(CompanyFlow.viewing_list, F.text == "✏️ Редактировать компанию")
 async def start_edit_company(message: types.Message, state: FSMContext):
-    await state.set_state(IntegrationFlow.selecting_company)
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(f'{API_BASE_URL}/sales/companies/all') as resp:
+                if resp.status == 200:
+                    companies = await resp.json()
+                    if not companies:
+                        await message.answer("📋 Нет компаний")
+                        return
+                    await state.update_data(companies=companies)
+                    await state.set_state(CompanyFlow.selecting_for_edit)
+                    await message.answer("🔍 <b>Редактирование</b>\n\nВведите ID компании:", parse_mode='HTML')
+        except Exception as e:
+            await message.answer(f"❌ Ошибка: {str(e)[:40]}")
     await message.answer("🔍 <b>Редактирование</b>\n\nВведите ID компании:", parse_mode='HTML')
 
 @dp.message(CompanyFlow.selecting_for_edit)
@@ -286,22 +298,31 @@ async def select_company_for_edit(message: types.Message, state: FSMContext):
     except:
         await message.answer("❌ Неверный ID")
         return
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(f'{API_BASE_URL}/sales/companies/all') as resp:
-                if resp.status == 200:
-                    companies = await resp.json()
-                    company = next((c for c in companies if c['id'] == company_id), None)
-                    if not company:
-                        await message.answer("❌ Не найдена", reply_markup=get_main_keyboard())
-                        await state.clear()
-                        return
-                    await state.update_data(id=company_id, name=company.get('name'), bin_iin=company.get('bin_iin'), phone=company.get('phone'), whatsapp=company.get('whatsapp'), email=company.get('email'), description=company.get('description'), logo_url=company.get('logo_url'), bot_token=company.get('bot_token'), manager_chat_id=company.get('manager_chat_id'), ai_endpoint=company.get('ai_endpoint'), ai_api_key=company.get('ai_api_key'))
-                    await state.set_state(CompanyFlow.editing_name)
-                    await message.answer(f"📝 <b>Шаг 1/11: Название</b>\n\n<i>Текущее:</i> {company.get('name') or 'нет'}\n\nВведите новое или '.':", parse_mode='HTML')
-        except:
-            await message.answer("❌ Ошибка", reply_markup=get_main_keyboard())
-            await state.clear()
+    
+    data = await state.get_data()
+    companies = data.get('companies', [])
+    company = next((c for c in companies if c['id'] == company_id), None)
+    
+    if company:
+        await state.update_data(
+            id=company_id,
+            name=company.get('name'),
+            bin_iin=company.get('bin_iin'),
+            phone=company.get('phone'),
+            whatsapp=company.get('whatsapp'),
+            email=company.get('email'),
+            description=company.get('description'),
+            logo_url=company.get('logo_url'),
+            bot_token=company.get('bot_token'),
+            manager_chat_id=company.get('manager_chat_id'),
+            ai_endpoint=company.get('ai_endpoint'),
+            ai_api_key=company.get('ai_api_key')
+        )
+        await state.set_state(CompanyFlow.editing_name)
+        await message.answer(f"✏️ Редактирование: {company['name']}\n\n1️⃣ Название\nТекущее: {company.get('name', 'не указано')}\n\nВведите новое или '.':", parse_mode='HTML')
+    else:
+        await message.answer("❌ Компания не найдена", reply_markup=get_main_keyboard())
+        await state.clear()
 
 @dp.message(CompanyFlow.editing_name)
 async def process_name(message: types.Message, state: FSMContext):
