@@ -943,3 +943,90 @@ cp dist/bizdnaii-avatar-widget.js /var/www/bizdnai/widget-source/
 cd /root/dnai-sales/frontend/widget
 npm run build
 cp dist/bizdnaii-widget.js /var/www/bizdnai/widget-source/bizdnaii-widget-classic.js
+
+
+#🔌 Widget → CRM Integration
+Описание
+Автоматическая отправка лидов из виджетов (Instagram, Web и др.) в CRM клиента.
+
+Поддерживаемые CRM
+Bitrix24 ✅ (реализовано)
+AMO CRM (планируется)
+KOMMO CRM (планируется)
+Salesforce (планируется)
+Как работает
+Виджет → Диалог с AI → Сбор контактов → Подтверждение → Bitrix24
+Что создаётся в Bitrix24:
+Контакт — Имя + Телефон
+Сделка — Название, Стадия NEW, AI анализ в комментарии
+Управление
+Менеджер (Telegram бот)
+Кнопка 🔌 Интеграция CRM в главном меню
+Toggle ON/OFF через inline кнопку
+МУЛЬТИ режим: каждая компания управляет отдельно
+SuperAdmin
+Интеграции → компания → настройка webhook URL
+Поддерживаемые поля: integration_enabled, integration_type, bitrix24_webhook_url
+Настройка Bitrix24
+Bitrix24 → Приложения → Вебхуки → Входящий вебхук
+Добавить права: crm.contact.add, crm.deal.add
+Скопировать URL формата:
+https://COMPANY.bitrix24.kz/rest/USER_ID/WEBHOOK_KEY/
+Вставить в SuperAdmin → Интеграции → {компания}
+API Endpoints
+Метод	Endpoint	Описание
+GET	/sales/companies/all	Получить статус интеграции
+POST	/sales/company/upsert	Вкл/выкл интеграции
+Файлы
+Файл	Назначение
+backend/routers/sales_agent.py	Функция send_lead_to_bitrix24()
+bot/handlers.py	Кнопка интеграции для менеджера
+backend/models.py	Поля Company: integration_enabled, integration_type, bitrix24_webhook_url
+💰 Pricing System
+Динамическая страница тарифов
+URL: https://bizdnai.com/sales/pricing.html
+
+Тарифы (ежемесячно)
+Тариф	Цена	Лиды	Веб	Соц	Аватары	1С + CRM
+FREE	$0	20	1	0	0	❌
+BASIC	$19	100	1	2	1	❌
+PRO	$39	200	1	5	2	✅
+ENTERPRISE	$99	1000	3	10	5	✅
+AI Пакеты (разово)
+Пакет	Цена	Описание
+🎯 Базовый	$0	Стандартное приветствие, базовая квалификация
+📊 Стандарт	$99	Персонализация, FAQ
+⚡ Продвинутый	$199	База знаний, сценарии
+🎨 Кастомный	$399	Полная настройка
+🎭 Аватар	$299	Подключение аватаров
+🔌 Интеграция 1С + CRM	$600	Bitrix24, AMO, KOMMO, Salesforce
+Управление ценами (SuperAdmin)
+Кнопка 💳 Тарифы в SuperAdmin боте:
+
+💰 {tier} → изменить цену тарифа
+👥 {tier} → изменить лимит лидов
+🎭 {tier} → изменить лимит аватаров
+🤖 {package} → изменить цену AI пакета
+Все цены хранятся в БД и автоматически отображаются на pricing.html.
+
+База данных
+Таблица tier_settings
+tier VARCHAR(20) PRIMARY KEY,    -- free, basic, pro, enterprise
+name_ru VARCHAR(50),
+price_usd INTEGER,
+leads_limit INTEGER,
+web_widgets_limit INTEGER,
+social_widgets_limit INTEGER,
+avatar_limit INTEGER
+Таблица ai_agent_packages
+package VARCHAR(20) PRIMARY KEY, -- basic, standard, advanced, custom, avatar, integration
+name_ru VARCHAR(50),
+price_usd INTEGER,
+sort_order INTEGER
+API Endpoints
+Метод	Endpoint	Описание
+GET	/sales/tiers	Список тарифов
+GET	/sales/ai-packages	Список AI пакетов
+GET	/sales/pricing.html	Динамическая страница
+PATCH	/sales/tiers/{tier}	Обновить тариф
+PATCH	/sales/ai-packages/{package}	Обновить пакет
