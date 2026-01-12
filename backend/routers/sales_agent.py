@@ -1583,6 +1583,7 @@ async def get_pricing_html(db: AsyncSession = Depends(get_db)):
                 <li>🌐 {t.web_widgets_limit} <span data-ru="веб-виджет" data-en="web widget">веб-виджет</span></li>
                 <li>📱 {t.social_widgets_limit} <span data-ru="соц. виджетов" data-en="social widgets">соц. виджетов</span></li>
                 <li>🎭 {t.avatar_limit} <span data-ru="{'аватар' if t.avatar_limit == 1 else 'аватаров'}" data-en="{'avatar' if t.avatar_limit == 1 else 'avatars'}">{'аватар' if t.avatar_limit == 1 else 'аватаров'}</span></li>
+                <li>{'✅' if t.tier in ['pro', 'enterprise'] else '❌'} <span data-ru="Интеграция 1С + CRM" data-en="1C + CRM Integration">Интеграция 1С + CRM</span></li>
             </ul>
         </div>"""
     
@@ -1592,14 +1593,16 @@ async def get_pricing_html(db: AsyncSession = Depends(get_db)):
         'standard': ('📊 Стандарт', '📊 Standard'),
         'advanced': ('⚡ Продвинутый', '⚡ Advanced'),
         'custom': ('🎨 Кастомный', '🎨 Custom'),
-        'avatar': ('🎭 Аватар', '🎭 Avatar')
+        'avatar': ('🎭 Аватар', '🎭 Avatar'),
+        'integration': ('🔌 Интеграция 1С с CRM', '🔌 1C + CRM Integration')
     }
     ai_features = {
         'basic': ('Стандартное приветствие, базовая квалификация, сбор контактов', 'Standard greeting, basic qualification, contact collection'),
         'standard': ('Персонализация, расширенная квалификация, FAQ', 'Personalization, extended qualification, FAQ training'),
         'advanced': ('База знаний, умная квалификация, сценарии', 'Knowledge base, smart qualification, dialog scripts'),
         'custom': ('Полная настройка', 'Full customization, CRM integration, 24/7 support'),
-        'avatar': ('Подключение аватаров', 'Avatar setup & configuration')
+        'avatar': ('Подключение аватаров', 'Avatar setup & configuration'),
+        'integration': ('Битрикс24, AMO CRM, KOMMO CRM, Salesforce и др.', 'Bitrix24, AMO CRM, KOMMO CRM, Salesforce, etc.')
     }
     
     # Generate package rows
