@@ -18,7 +18,8 @@ def get_admin_keyboard():
             [KeyboardButton(text="📊 Статус"), KeyboardButton(text="📋 Лиды")],
             [KeyboardButton(text="📢 Каналы"), KeyboardButton(text="🌐 Виджет")],
             [KeyboardButton(text="💳 Тарифы"), KeyboardButton(text="🌍 Язык")],
-            [KeyboardButton(text="🔌 Интеграция CRM"), KeyboardButton(text="👥 Менеджеры")],
+            [KeyboardButton(text="🔌 Внешняя CRM"), KeyboardButton(text="📊 Внутренняя CRM")],
+            [KeyboardButton(text="👥 Менеджеры")],
             [KeyboardButton(text="📊 Лиды за неделю"), KeyboardButton(text="📅 Лиды за месяц")],
             [KeyboardButton(text="🏠 Меню")]
         ],
@@ -666,8 +667,8 @@ async def process_admin_command(message: types.Message, text: str, state: FSMCon
                                 text += "Лиды из виджетов автоматически отправляются в CRM."
                                 btn_text = "❌ Выключить интеграцию"
                             else:
-                                text = "❌ <b>Интеграция CRM выключена</b>\n\n"
-                                text += "Лиды сохраняются только в BizDNAi."
+                                text = "❌ <b>Внутренняя CRM не подключена</b>\n\n"
+                                text += "Лиды сохраняются, но не обрабатываются!\nПодключите CRM для автоматизации."
                                 btn_text = "✅ Включить интеграцию"
                             
                             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -1641,3 +1642,120 @@ async def format_tier_info(company_id: int) -> str:
         logging.error(f"Tier info error: {e}")
         return f"❌ Ошибка: {str(e)[:50]}"
 
+
+# ============ CRM TYPE SELECTION ============
+
+@router.message(F.text == "🔌 Внешняя CRM")
+async def admin_external_crm(message: types.Message):
+    """External CRM integrations (Bitrix24, Kommo, AmoCRM)"""
+    if not is_admin(message.from_user.id, message.bot):
+        return
+    
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📘 Bitrix24", callback_data="crm_ext:bitrix24")],
+        [InlineKeyboardButton(text="🟣 Kommo (amoCRM)", callback_data="crm_ext:kommo")],
+        [InlineKeyboardButton(text="❌ Отключить внешнюю CRM", callback_data="crm_ext:disable")]
+    ])
+    
+    await message.answer(
+        "🔌 <b>Внешняя CRM</b>\n\n"
+        "Выберите систему для интеграции.\n"
+        "Лиды будут автоматически отправляться в выбранную CRM.",
+        parse_mode='HTML',
+        reply_markup=kb
+    )
+
+@router.message(F.text == "📊 Внутренняя CRM")
+async def admin_internal_crm(message: types.Message):
+    """Internal BizDNAi CRM"""
+    if not is_admin(message.from_user.id, message.bot):
+        return
+    
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    company_id = getattr(message.bot, 'company_id', 1)
+    
+    # Get current CRM status
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f'{API_BASE_URL}/crm/{company_id}/stats') as resp:
+                if resp.status == 200:
+                    stats = await resp.json()
+                    total = stats.get('total', 0)
+                    today = stats.get('today', 0)
+                else:
+                    total, today = 0, 0
+    except:
+        total, today = 0, 0
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Включить внутреннюю CRM", callback_data="crm_int:enable")],
+        [InlineKeyboardButton(text="❌ Отключить внутреннюю CRM", callback_data="crm_int:disable")],
+        [InlineKeyboardButton(text="⚙️ Настройки статусов", callback_data="crm_int:statuses")],
+        [InlineKeyboardButton(text="💰 Настройки монеток", callback_data="crm_int:coins")]
+    ])
+    
+    await message.answer(
+        f"📊 <b>Внутренняя CRM BizDNAi</b>\n\n"
+        f"📋 Лидов всего: {total}\n"
+        f"📅 Лидов сегодня: {today}\n\n"
+        f"Функции:\n"
+        f"• Статусы лидов с монетками\n"
+        f"• Заметки и история\n"
+        f"• Лидерборд менеджеров\n"
+        f"• AI-анализ клиентов",
+        parse_mode='HTML',
+        reply_markup=kb
+    )
+
+@router.callback_query(F.data.startswith("crm_int:"))
+async def handle_internal_crm(callback: types.CallbackQuery):
+    """Handle internal CRM settings"""
+    action = callback.data.split(":")[1]
+    company_id = getattr(callback.bot, 'company_id', 1)
+    
+    if action == "enable":
+        try:
+            async with aiohttp.ClientSession() as session:
+                await session.patch(f'{API_BASE_URL}/sales/company/{company_id}', json={'crm_type': 'internal'})
+            await callback.answer("✅ Внутренняя CRM включена!")
+            await callback.message.edit_text("✅ <b>Внутренняя CRM включена!</b>\n\nТеперь менеджеры могут работать с лидами через /join", parse_mode='HTML')
+        except:
+            await callback.answer("❌ Ошибка")
+    
+    elif action == "disable":
+        try:
+            async with aiohttp.ClientSession() as session:
+                await session.patch(f'{API_BASE_URL}/sales/company/{company_id}', json={'crm_type': None})
+            await callback.answer("❌ Внутренняя CRM отключена")
+            await callback.message.edit_text("❌ <b>Внутренняя CRM отключена</b>", parse_mode='HTML')
+        except:
+            await callback.answer("❌ Ошибка")
+    
+    elif action == "statuses":
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f'{API_BASE_URL}/crm/{company_id}/statuses') as resp:
+                    if resp.status == 200:
+                        statuses = await resp.json()
+                        text = "⚙️ <b>Статусы лидов</b>\n\n"
+                        for s in statuses:
+                            coins = f"+{s['coins']}" if s['coins'] > 0 else str(s['coins'])
+                            time_str = f"{s['max_time_minutes']}м" if s['max_time_minutes'] else "∞"
+                            text += f"{s['emoji']} {s['name']} — {coins}💰, {time_str}\n"
+                        await callback.message.edit_text(text, parse_mode='HTML')
+                    else:
+                        await callback.answer("❌ Ошибка загрузки")
+        except:
+            await callback.answer("❌ Ошибка")
+    
+    elif action == "coins":
+        await callback.message.edit_text(
+            "💰 <b>Настройка монеток</b>\n\n"
+            "Монетки начисляются за смену статуса лида.\n\n"
+            "Для редактирования используйте API:\n"
+            "<code>PATCH /crm/{company_id}/statuses/{status_id}</code>",
+            parse_mode='HTML'
+        )
+        await callback.answer()
