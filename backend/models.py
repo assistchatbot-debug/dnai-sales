@@ -29,7 +29,7 @@ class Company(Base):
     
     # Bot configuration
     bot_token = Column(String)  # Токен Telegram бота компании
-    manager_chat_id = Column(BigInteger)  # Chat ID менеджера компании
+    admin_chat_id = Column(BigInteger)  # Chat ID менеджера компании
     
     # AI configuration
     ai_endpoint = Column(Text)  # AI API endpoint URL

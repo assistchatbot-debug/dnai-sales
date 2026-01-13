@@ -106,3 +106,56 @@ async def get_stats(company_id: int):
         total = await db.execute(text("SELECT COUNT(*) FROM leads WHERE company_id = :cid"), {'cid': company_id})
         today = await db.execute(text("SELECT COUNT(*) FROM leads WHERE company_id = :cid AND created_at >= CURRENT_DATE"), {'cid': company_id})
         return {'total': total.scalar(), 'today': today.scalar(), 'by_status': {r[0] or '🟢': r[1] for r in by_status.fetchall()}}
+
+# ============ MANAGERS ============
+
+@router.get('/{company_id}/managers')
+async def get_managers(company_id: int):
+    """Get all managers of company"""
+    async with get_db_session() as db:
+        result = await db.execute(text("""
+            SELECT id, user_id, telegram_username, full_name, is_active, created_at
+            FROM company_managers WHERE company_id = :cid AND is_active = TRUE
+            ORDER BY created_at
+        """), {'cid': company_id})
+        return [{'id': r[0], 'user_id': r[1], 'telegram_username': r[2], 'full_name': r[3], 
+                 'is_active': r[4], 'created_at': r[5].isoformat() if r[5] else None} for r in result.fetchall()]
+
+@router.get('/{company_id}/managers/{user_id}')
+async def get_manager(company_id: int, user_id: int):
+    """Check if user is a manager"""
+    async with get_db_session() as db:
+        result = await db.execute(text("""
+            SELECT id, full_name FROM company_managers 
+            WHERE company_id = :cid AND user_id = :uid AND is_active = TRUE
+        """), {'cid': company_id, 'uid': user_id})
+        row = result.fetchone()
+        if not row:
+            raise HTTPException(404, "Not a manager")
+        return {'id': row[0], 'full_name': row[1]}
+
+@router.post('/{company_id}/managers')
+async def add_manager(company_id: int, data: dict):
+    """Add new manager (self-registration via /join)"""
+    async with get_db_session() as db:
+        try:
+            await db.execute(text("""
+                INSERT INTO company_managers (company_id, user_id, telegram_username, full_name)
+                VALUES (:cid, :uid, :username, :name)
+            """), {'cid': company_id, 'uid': data['user_id'], 'username': data.get('telegram_username', ''), 'name': data.get('full_name', '')})
+            await db.commit()
+            return {'success': True}
+        except Exception as e:
+            if 'unique' in str(e).lower():
+                raise HTTPException(409, "Already registered")
+            raise HTTPException(500, str(e))
+
+@router.delete('/{company_id}/managers/{user_id}')
+async def remove_manager(company_id: int, user_id: int):
+    """Deactivate manager"""
+    async with get_db_session() as db:
+        await db.execute(text("""
+            UPDATE company_managers SET is_active = FALSE WHERE company_id = :cid AND user_id = :uid
+        """), {'cid': company_id, 'uid': user_id})
+        await db.commit()
+        return {'success': True}

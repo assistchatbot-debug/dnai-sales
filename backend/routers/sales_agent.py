@@ -298,7 +298,7 @@ async def background_send_notifications(lead_contact: str, history: list, summar
         
         if company:
             company_bot_token = company.bot_token
-            company_manager_id = company.manager_chat_id
+            company_manager_id = company.admin_chat_id
             company_email = company.email
             logging.info(f'📧 Company {company_id}: email={company_email}, manager={company_manager_id}')
         else:
@@ -313,7 +313,7 @@ async def background_send_notifications(lead_contact: str, history: list, summar
                 ai_summary=summary,
                 lead_phone=phone,
                 bot_token=company_bot_token,
-                manager_chat_id=company_manager_id
+                admin_chat_id=company_manager_id
             )
             logging.info(f'✅ Telegram notification completed for {phone}')
         except Exception as e:
@@ -678,9 +678,9 @@ async def upsert_company(data: dict, db: AsyncSession = Depends(get_db)):
     if 'bot_token' in data:
         company.bot_token = data['bot_token']
         logging.info(f'🔐 Updated bot_token for company {company_id}')
-    if 'manager_chat_id' in data:
-        company.manager_chat_id = data['manager_chat_id']
-        logging.info(f'👤 Updated manager_chat_id for company {company_id}: {data["manager_chat_id"]}')
+    if 'admin_chat_id' in data:
+        company.admin_chat_id = data['admin_chat_id']
+        logging.info(f'👤 Updated admin_chat_id for company {company_id}: {data["admin_chat_id"]}')
     if 'ai_endpoint' in data:
         company.ai_endpoint = data['ai_endpoint']
         logging.info(f'🤖 Updated ai_endpoint for company {company_id}')
@@ -1243,7 +1243,7 @@ async def get_all_companies(db: AsyncSession = Depends(get_db)):
             'description': c.description,
             'logo_url': c.logo_url,
             'bot_token': c.bot_token,
-            'manager_chat_id': c.manager_chat_id,
+            'admin_chat_id': c.admin_chat_id,
             'ai_endpoint': c.ai_endpoint,
             'ai_api_key': c.ai_api_key,
             'tier': c.tier,

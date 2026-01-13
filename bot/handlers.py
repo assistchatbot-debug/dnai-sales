@@ -10,7 +10,7 @@ from config import API_BASE_URL
 from states import SalesFlow, ManagerFlow
 from keyboards import get_start_keyboard
 
-def get_manager_keyboard():
+def get_admin_keyboard():
     """Manager bot main keyboard"""
     from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
     return ReplyKeyboardMarkup(
@@ -18,7 +18,7 @@ def get_manager_keyboard():
             [KeyboardButton(text="📊 Статус"), KeyboardButton(text="📋 Лиды")],
             [KeyboardButton(text="📢 Каналы"), KeyboardButton(text="🌐 Виджет")],
             [KeyboardButton(text="💳 Тарифы"), KeyboardButton(text="🌍 Язык")],
-            [KeyboardButton(text="🔌 Интеграция CRM")],
+            [KeyboardButton(text="🔌 Интеграция CRM"), KeyboardButton(text="👥 Менеджеры")],
             [KeyboardButton(text="📊 Лиды за неделю"), KeyboardButton(text="📅 Лиды за месяц")],
             [KeyboardButton(text="🏠 Меню")]
         ],
@@ -29,11 +29,11 @@ def get_manager_keyboard():
 
 router = Router()
 
-def is_manager(user_id: int, bot) -> bool:
+def is_admin(user_id: int, bot) -> bool:
     """Check if user is the authorized manager for this bot's company"""
-    if not hasattr(bot, 'manager_chat_id') or not bot.manager_chat_id:
+    if not hasattr(bot, 'admin_chat_id') or not bot.admin_chat_id:
         return False
-    return str(user_id) == str(bot.manager_chat_id)
+    return str(user_id) == str(bot.admin_chat_id)
 
 async def start_session(user_id: int, company_id: int, new_session: bool = True):
     """Start session for specific company"""
@@ -80,8 +80,8 @@ async def process_backend_response(message: types.Message, response_text: str):
 @router.message(Command('start'))
 async def cmd_start(message: types.Message, state: FSMContext):
     # Manager menu with buttons
-    if is_manager(message.from_user.id,message.bot):
-        await message.answer("🤖 <b>Меню</b>", reply_markup=get_manager_keyboard(), parse_mode='HTML')
+    if is_admin(message.from_user.id,message.bot):
+        await message.answer("🤖 <b>Меню</b>", reply_markup=get_admin_keyboard(), parse_mode='HTML')
         return
     await state.set_state(SalesFlow.qualifying)
     company_id = getattr(message.bot, 'company_id', 1)
@@ -161,8 +161,8 @@ async def handle_contact(message: types.Message, state: FSMContext):
 @router.message(F.voice)
 async def handle_voice(message: types.Message, state: FSMContext):
     # Check if manager - handle separately
-    if is_manager(message.from_user.id, message.bot):
-        await handle_manager_voice(message, state)
+    if is_admin(message.from_user.id, message.bot):
+        await handle_admin_voice(message, state)
         return
     
     user_id = str(message.from_user.id)
@@ -251,7 +251,7 @@ async def handle_voice(message: types.Message, state: FSMContext):
             pass
         await message.answer("Произошла ошибка при обработке голоса.")
 
-async def handle_manager_voice(message: types.Message, state: FSMContext):
+async def handle_admin_voice(message: types.Message, state: FSMContext):
     """Handle voice messages from manager"""
     status_msg = await message.answer("🎤 Обрабатываю голосовое сообщение...")
     
@@ -286,7 +286,7 @@ async def handle_manager_voice(message: types.Message, state: FSMContext):
                         # Show transcription
                         await message.answer(f"🗣 {transcribed_text}")
                         # Process as manager command
-                        await process_manager_command(message, transcribed_text, state)
+                        await process_admin_command(message, transcribed_text, state)
                     else:
                         await message.answer("❌ Не удалось распознать голос")
                 else:
@@ -303,11 +303,33 @@ async def handle_manager_voice(message: types.Message, state: FSMContext):
             pass
         await message.answer(f"❌ Ошибка: {str(e)}")
 
-async def process_manager_command(message: types.Message, text: str, state: FSMContext):
+async def process_admin_command(message: types.Message, text: str, state: FSMContext):
     """Process manager text commands"""
     text_lower = text.lower()
     
-    if 'статус' in text_lower or 'status' in text_lower:
+    if 'менеджеры' in text_lower:
+        company_id = getattr(message.bot, 'company_id', 1)
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f'{API_BASE_URL}/crm/{company_id}/managers') as resp:
+                    if resp.status == 200:
+                        managers = await resp.json()
+                        text_msg = "👥 <b>Менеджеры компании</b>\n\n"
+                        if managers:
+                            for m in managers:
+                                status = "✅" if m.get('is_active') else "❌"
+                                text_msg += f"{status} {m.get('full_name', 'Без имени')} (@{m.get('telegram_username', '?')})\n"
+                        else:
+                            text_msg += "Пока нет менеджеров\n"
+                        text_msg += "\n<b>Чтобы добавить:</b> менеджер пишет /join"
+                        await message.answer(text_msg, parse_mode='HTML')
+                    else:
+                        await message.answer("📋 Менеджеры: 0\n\nЧтобы добавить: менеджер пишет /join")
+        except Exception as e:
+            logging.error(f"Managers error: {e}")
+            await message.answer("📋 Менеджеры: 0\n\nЧтобы добавить: менеджер пишет /join")
+
+    elif 'статус' in text_lower or 'status' in text_lower:
         company_id = getattr(message.bot, 'company_id', 1)
         logging.info(f"🏢 MULTITENANCY: Manager checking status for company {company_id}")
         
@@ -611,7 +633,7 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
         await message.answer(text, parse_mode='HTML')
     
     elif 'меню' in text_lower or 'menu' in text_lower:
-        await message.answer("🏠 <b>Главное меню</b>", reply_markup=get_manager_keyboard(), parse_mode='HTML')
+        await message.answer("🏠 <b>Главное меню</b>", reply_markup=get_admin_keyboard(), parse_mode='HTML')
     
     elif 'помощь' in text_lower or 'help' in text_lower or 'команд' in text_lower:
         await message.answer(
@@ -706,7 +728,7 @@ async def process_manager_command(message: types.Message, text: str, state: FSMC
 @router.message(ManagerFlow.entering_channel_name)
 async def process_channel_name(message: types.Message, state: FSMContext):
     """Process channel name input"""
-    if not is_manager(message.from_user.id, message.bot):
+    if not is_admin(message.from_user.id, message.bot):
         await state.clear()
         return
     
@@ -728,7 +750,7 @@ async def process_channel_name(message: types.Message, state: FSMContext):
 @router.message(ManagerFlow.entering_greeting)
 async def process_greeting(message: types.Message, state: FSMContext):
     """Process greeting and create widget"""
-    if not is_manager(message.from_user.id, message.bot):
+    if not is_admin(message.from_user.id, message.bot):
         await state.clear()
         return
     
@@ -787,7 +809,7 @@ async def process_greeting(message: types.Message, state: FSMContext):
 @router.message(ManagerFlow.entering_widget_domain)
 async def process_widget_domain(message: types.Message, state: FSMContext):
     """Process domain input"""
-    if not is_manager(message.from_user.id, message.bot):
+    if not is_admin(message.from_user.id, message.bot):
         await state.clear()
         return
     
@@ -803,7 +825,7 @@ async def process_widget_domain(message: types.Message, state: FSMContext):
 @router.message(ManagerFlow.entering_widget_greeting)
 async def process_widget_greeting(message: types.Message, state: FSMContext):
     """Process greeting and create widget"""
-    if not is_manager(message.from_user.id, message.bot):
+    if not is_admin(message.from_user.id, message.bot):
         await state.clear()
         return
     
@@ -847,7 +869,7 @@ async def process_widget_greeting(message: types.Message, state: FSMContext):
 @router.message(ManagerFlow.editing_widget_greeting)
 async def process_edit_greeting(message: types.Message, state: FSMContext):
     """Process editing widget greeting"""
-    if not is_manager(message.from_user.id, message.bot):
+    if not is_admin(message.from_user.id, message.bot):
         await state.clear()
         return
     
@@ -892,7 +914,7 @@ async def process_edit_greeting(message: types.Message, state: FSMContext):
 @router.message(ManagerFlow.editing_social_greeting)
 async def process_social_greeting(message: types.Message, state: FSMContext):
     """Process new social widget greeting"""
-    if not is_manager(message.from_user.id, message.bot):
+    if not is_admin(message.from_user.id, message.bot):
         await message.answer("❌ Недостаточно прав")
         return
 
@@ -924,7 +946,7 @@ async def process_social_greeting(message: types.Message, state: FSMContext):
 @router.message(ManagerFlow.editing_social_name)
 async def process_social_name(message: types.Message, state: FSMContext):
     """Process new social widget name"""
-    if not is_manager(message.from_user.id, message.bot):
+    if not is_admin(message.from_user.id, message.bot):
         await message.answer("❌ Недостаточно прав")
         return
 
@@ -954,7 +976,7 @@ async def process_social_name(message: types.Message, state: FSMContext):
 @router.message(F.text == "🌍 Язык")
 async def manager_language_menu(message: types.Message):
     """Show language selection for manager reports"""
-    if not is_manager(message.from_user.id, message.bot):
+    if not is_admin(message.from_user.id, message.bot):
         return
     
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -972,7 +994,7 @@ async def manager_language_menu(message: types.Message):
 @router.callback_query(F.data.startswith("manager_lang_"))
 async def set_manager_language_callback(callback: types.CallbackQuery):
     """Handle manager language selection"""
-    if not is_manager(callback.from_user.id, callback.bot):
+    if not is_admin(callback.from_user.id, callback.bot):
         await callback.answer("❌ Недостаточно прав", show_alert=True)
         return
     
@@ -1007,7 +1029,7 @@ async def set_manager_language_callback(callback: types.CallbackQuery):
 @router.message(ManagerFlow.editing_widget_domain)
 async def process_edit_domain(message: types.Message, state: FSMContext):
     """Process editing widget domain"""
-    if not is_manager(message.from_user.id, message.bot):
+    if not is_admin(message.from_user.id, message.bot):
         await state.clear()
         return
     
@@ -1050,7 +1072,7 @@ async def process_edit_domain(message: types.Message, state: FSMContext):
 @router.callback_query(F.data == "toggle_crm_integration")
 async def toggle_crm_integration_callback(callback: types.CallbackQuery):
     """Toggle CRM integration ON/OFF for manager"""
-    if not is_manager(callback.from_user.id, callback.bot):
+    if not is_admin(callback.from_user.id, callback.bot):
         await callback.answer("❌ Недостаточно прав", show_alert=True)
         return
     
@@ -1103,8 +1125,8 @@ async def handle_text(message: types.Message, state: FSMContext):
     if message.text.startswith('/'):
         return
     
-    if is_manager(message.from_user.id, message.bot):
-        await process_manager_command(message, message.text, state)
+    if is_admin(message.from_user.id, message.bot):
+        await process_admin_command(message, message.text, state)
         return
 
     user_id = str(message.from_user.id)
@@ -1176,7 +1198,7 @@ async def handle_text(message: types.Message, state: FSMContext):
 @router.callback_query(F.data.startswith("create_widget_"))
 async def create_widget_callback(callback: types.CallbackQuery, state: FSMContext):
     """Handle Create Widget button - ask for widget type"""
-    if not is_manager(callback.from_user.id, callback.bot):
+    if not is_admin(callback.from_user.id, callback.bot):
         await callback.answer("❌ Недостаточно прав", show_alert=True)
         return
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -1199,7 +1221,7 @@ async def widget_type_callback(callback: types.CallbackQuery, state: FSMContext)
 @router.callback_query(F.data.startswith("edit_widget_"))
 async def edit_widget_callback(callback: types.CallbackQuery, state: FSMContext):
     """Handle 'Edit Widget' button - show edit menu for social widget"""
-    if not is_manager(callback.from_user.id, callback.bot):
+    if not is_admin(callback.from_user.id, callback.bot):
         await callback.answer("❌ Недостаточно прав", show_alert=True)
         return
 
@@ -1242,7 +1264,7 @@ async def edit_widget_callback(callback: types.CallbackQuery, state: FSMContext)
 @router.callback_query(F.data.startswith("qr_widget_"))
 async def qr_widget_callback(callback: types.CallbackQuery):
     """Generate QR code for social widget URL"""
-    if not is_manager(callback.from_user.id, callback.bot):
+    if not is_admin(callback.from_user.id, callback.bot):
         await callback.answer("❌ Недостаточно прав", show_alert=True)
         return
 
@@ -1288,7 +1310,7 @@ async def qr_widget_callback(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("delete_widget_"))
 async def delete_widget_callback(callback: types.CallbackQuery):
     """Handle 'Delete Widget' button"""
-    if not is_manager(callback.from_user.id, callback.bot):
+    if not is_admin(callback.from_user.id, callback.bot):
         await callback.answer("❌ Недостаточно прав", show_alert=True)
         return
     
@@ -1318,7 +1340,7 @@ async def delete_widget_callback(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("editwidget_"))
 async def edit_webwidget_callback(callback: types.CallbackQuery, state: FSMContext):
     """Show edit menu for web widget"""
-    if not is_manager(callback.from_user.id, callback.bot):
+    if not is_admin(callback.from_user.id, callback.bot):
         await callback.answer("❌ Недостаточно прав", show_alert=True)
         return
     
@@ -1343,7 +1365,7 @@ async def edit_webwidget_callback(callback: types.CallbackQuery, state: FSMConte
 @router.callback_query(F.data.startswith("editgreeting_"))
 async def edit_greeting_callback(callback: types.CallbackQuery, state: FSMContext):
     """Start editing greeting"""
-    if not is_manager(callback.from_user.id, callback.bot):
+    if not is_admin(callback.from_user.id, callback.bot):
         await callback.answer("❌ Недостаточно прав", show_alert=True)
         return
     
@@ -1362,7 +1384,7 @@ async def edit_greeting_callback(callback: types.CallbackQuery, state: FSMContex
 @router.callback_query(F.data.startswith("editdomain_"))
 async def edit_domain_callback(callback: types.CallbackQuery, state: FSMContext):
     """Start editing domain"""
-    if not is_manager(callback.from_user.id, callback.bot):
+    if not is_admin(callback.from_user.id, callback.bot):
         await callback.answer("❌ Недостаточно прав", show_alert=True)
         return
     
@@ -1380,7 +1402,7 @@ async def edit_domain_callback(callback: types.CallbackQuery, state: FSMContext)
 @router.callback_query(F.data == "back_to_widgets")
 async def back_to_widgets_callback(callback: types.CallbackQuery):
     """Return to widgets list"""
-    if not is_manager(callback.from_user.id, callback.bot):
+    if not is_admin(callback.from_user.id, callback.bot):
         await callback.answer("❌ Недостаточно прав", show_alert=True)
         return
     
@@ -1391,7 +1413,7 @@ async def back_to_widgets_callback(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("togglewidget_"))
 async def toggle_webwidget_callback(callback: types.CallbackQuery):
     """Toggle web widget active status"""
-    if not is_manager(callback.from_user.id, callback.bot):
+    if not is_admin(callback.from_user.id, callback.bot):
         await callback.answer("❌ Недостаточно прав", show_alert=True)
         return
     
@@ -1447,7 +1469,7 @@ async def toggle_webwidget_callback(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("delwidget_"))
 async def delete_webwidget_callback(callback: types.CallbackQuery):
     """Delete web widget"""
-    if not is_manager(callback.from_user.id, callback.bot):
+    if not is_admin(callback.from_user.id, callback.bot):
         await callback.answer("❌ Недостаточно прав", show_alert=True)
         return
     
@@ -1468,7 +1490,7 @@ async def delete_webwidget_callback(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("createwidget_"))
 async def create_webwidget_callback(callback: types.CallbackQuery, state: FSMContext):
     """Start creating web widget"""
-    if not is_manager(callback.from_user.id, callback.bot):
+    if not is_admin(callback.from_user.id, callback.bot):
         await callback.answer("❌ Недостаточно прав", show_alert=True)
         return
     
@@ -1485,7 +1507,7 @@ async def create_webwidget_callback(callback: types.CallbackQuery, state: FSMCon
 @router.callback_query(F.data.startswith("editsocialgreeting_"))
 async def edit_social_greeting_callback(callback: types.CallbackQuery, state: FSMContext):
     """Start editing social widget greeting"""
-    if not is_manager(callback.from_user.id, callback.bot):
+    if not is_admin(callback.from_user.id, callback.bot):
         await callback.answer("❌ Недостаточно прав", show_alert=True)
         return
 
@@ -1504,7 +1526,7 @@ async def edit_social_greeting_callback(callback: types.CallbackQuery, state: FS
 @router.callback_query(F.data.startswith("editsocialname_"))
 async def edit_social_name_callback(callback: types.CallbackQuery, state: FSMContext):
     """Start editing social widget name"""
-    if not is_manager(callback.from_user.id, callback.bot):
+    if not is_admin(callback.from_user.id, callback.bot):
         await callback.answer("❌ Недостаточно прав", show_alert=True)
         return
 
@@ -1528,7 +1550,7 @@ async def back_to_channels_callback(callback: types.CallbackQuery):
 @router.message(ManagerFlow.editing_social_greeting)
 async def process_social_greeting(message: types.Message, state: FSMContext):
     """Process new social widget greeting"""
-    if not is_manager(message.from_user.id, message.bot):
+    if not is_admin(message.from_user.id, message.bot):
         await message.answer("❌ Недостаточно прав")
         return
 
@@ -1555,7 +1577,7 @@ async def process_social_greeting(message: types.Message, state: FSMContext):
 @router.message(ManagerFlow.editing_social_name)
 async def process_social_name(message: types.Message, state: FSMContext):
     """Process new social widget name"""
-    if not is_manager(message.from_user.id, message.bot):
+    if not is_admin(message.from_user.id, message.bot):
         await message.answer("❌ Недостаточно прав")
         return
 

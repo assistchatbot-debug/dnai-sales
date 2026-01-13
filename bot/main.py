@@ -65,12 +65,12 @@ async def main():
             # Attach company metadata to bot instance
             bot.company_id = company['id']
             bot.company_name = company.get('name', f"Company {company['id']}")
-            bot.manager_chat_id = company.get('manager_chat_id')
+            bot.admin_chat_id = company.get('admin_chat_id')
             
             bots.append(bot)
             logging.info(
                 f"🤖 Bot #{company['id']}: {company['name']} "
-                f"(Manager: {company.get('manager_chat_id', 'not set')})"
+                f"(Manager: {company.get('admin_chat_id', 'not set')})"
             )
         except Exception as e:
             logging.error(f"❌ Failed to create bot for company {company['id']}: {e}")
