@@ -11,17 +11,16 @@ from states import SalesFlow, ManagerFlow
 from keyboards import get_start_keyboard
 
 def get_admin_keyboard():
-    """Manager bot main keyboard"""
+    """Admin bot main keyboard"""
     from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="📊 Статус"), KeyboardButton(text="📋 Лиды")],
+            [KeyboardButton(text="🏠 Меню"), KeyboardButton(text="📊 Статус")],
             [KeyboardButton(text="📢 Каналы"), KeyboardButton(text="🌐 Виджет")],
             [KeyboardButton(text="💳 Тарифы"), KeyboardButton(text="🌍 Язык")],
+            [KeyboardButton(text="👥 Менеджеры"), KeyboardButton(text="📋 Лиды")],
             [KeyboardButton(text="🔌 Внешняя CRM"), KeyboardButton(text="📊 Внутренняя CRM")],
-            [KeyboardButton(text="👥 Менеджеры")],
-            [KeyboardButton(text="📊 Лиды за неделю"), KeyboardButton(text="📅 Лиды за месяц")],
-            [KeyboardButton(text="🏠 Меню")]
+            [KeyboardButton(text="📈 Лиды за неделю"), KeyboardButton(text="📅 Лиды за месяц")]
         ],
         resize_keyboard=True
     )
@@ -308,7 +307,54 @@ async def process_admin_command(message: types.Message, text: str, state: FSMCon
     """Process manager text commands"""
     text_lower = text.lower()
     
-    if 'менеджеры' in text_lower:
+    if 'внешняя crm' in text_lower:
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        company_id = getattr(message.bot, 'company_id', 1)
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f'{API_BASE_URL}/sales/companies/all') as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        company = next((c for c in data if c.get('id') == company_id), None)
+                        if company:
+                            enabled = company.get('integration_enabled', False)
+                            itype = company.get('integration_type', '')
+                            if enabled and itype:
+                                text = f"✅ <b>Внешняя CRM {itype.upper()} подключена</b>"
+                            else:
+                                text = "❌ <b>Внешняя CRM не подключена</b>"
+                            kb = InlineKeyboardMarkup(inline_keyboard=[
+                                [InlineKeyboardButton(text="📘 Bitrix24", callback_data="crm_ext:bitrix24")],
+                                [InlineKeyboardButton(text="🟣 Kommo", callback_data="crm_ext:kommo")]
+                            ])
+                            await message.answer(text, parse_mode='HTML', reply_markup=kb)
+        except Exception as e:
+            await message.answer(f"❌ Ошибка: {str(e)[:30]}")
+
+    elif 'внутренняя crm' in text_lower:
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        company_id = getattr(message.bot, 'company_id', 1)
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f'{API_BASE_URL}/sales/companies/all') as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        company = next((c for c in data if c.get('id') == company_id), None)
+                        if company:
+                            crm_type = company.get('crm_type', '')
+                            if crm_type == 'internal':
+                                text = "✅ <b>Внутренняя CRM включена</b>"
+                            else:
+                                text = "❌ <b>Внутренняя CRM не подключена</b>"
+                            kb = InlineKeyboardMarkup(inline_keyboard=[
+                                [InlineKeyboardButton(text="✅ Включить" if crm_type != 'internal' else "❌ Отключить", callback_data="crm_int:toggle")],
+                                [InlineKeyboardButton(text="⚙️ Статусы", callback_data="crm_int:statuses")]
+                            ])
+                            await message.answer(text, parse_mode='HTML', reply_markup=kb)
+        except Exception as e:
+            await message.answer(f"❌ Ошибка: {str(e)[:30]}")
+
+    elif 'менеджеры' in text_lower:
         company_id = getattr(message.bot, 'company_id', 1)
         try:
             async with aiohttp.ClientSession() as session:
@@ -648,7 +694,7 @@ async def process_admin_command(message: types.Message, text: str, state: FSMCon
             parse_mode='HTML'
         )
     
-    elif 'интеграция' in text_lower or 'integration' in text_lower or 'crm' in text_lower:
+    elif ('интеграция' in text_lower or 'integration' in text_lower) and 'внешняя' not in text_lower and 'внутренняя' not in text_lower:
         company_id = getattr(message.bot, 'company_id', 1)
         try:
             async with aiohttp.ClientSession() as session:
@@ -1715,10 +1761,31 @@ async def handle_internal_crm(callback: types.CallbackQuery):
     action = callback.data.split(":")[1]
     company_id = getattr(callback.bot, 'company_id', 1)
     
+    if action == "toggle":
+        # Переключить статус
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f'{API_BASE_URL}/sales/companies/all') as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        company = next((c for c in data if c.get('id') == company_id), None)
+                        current = company.get('crm_type') if company else None
+                        new_type = None if current == 'internal' else 'internal'
+                        await session.post(f'{API_BASE_URL}/sales/company/upsert', json={'id': company_id, 'crm_type': new_type})
+                        if new_type == 'internal':
+                            await callback.answer("✅ Внутренняя CRM включена!")
+                            await callback.message.edit_text("✅ <b>Внутренняя CRM включена!</b>", parse_mode='HTML')
+                        else:
+                            await callback.answer("❌ Внутренняя CRM отключена")
+                            await callback.message.edit_text("❌ <b>Внутренняя CRM отключена</b>", parse_mode='HTML')
+        except Exception as e:
+            await callback.answer(f"❌ Ошибка: {str(e)[:30]}")
+        return
+    
     if action == "enable":
         try:
             async with aiohttp.ClientSession() as session:
-                await session.patch(f'{API_BASE_URL}/sales/company/{company_id}', json={'crm_type': 'internal'})
+                await session.post(f'{API_BASE_URL}/sales/company/upsert', json={'id': company_id, 'crm_type': 'internal'})
             await callback.answer("✅ Внутренняя CRM включена!")
             await callback.message.edit_text("✅ <b>Внутренняя CRM включена!</b>\n\nТеперь менеджеры могут работать с лидами через /join", parse_mode='HTML')
         except:
@@ -1727,7 +1794,7 @@ async def handle_internal_crm(callback: types.CallbackQuery):
     elif action == "disable":
         try:
             async with aiohttp.ClientSession() as session:
-                await session.patch(f'{API_BASE_URL}/sales/company/{company_id}', json={'crm_type': None})
+                await session.post(f'{API_BASE_URL}/sales/company/upsert', json={'id': company_id, 'crm_type': None})
             await callback.answer("❌ Внутренняя CRM отключена")
             await callback.message.edit_text("❌ <b>Внутренняя CRM отключена</b>", parse_mode='HTML')
         except:

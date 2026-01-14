@@ -256,6 +256,21 @@ async def get_or_create_lead(db: AsyncSession, company_id: int, user_id: str, us
         db.add(lead)
         await db.commit()
         await db.flush()
+        
+        # Notify managers if internal CRM is enabled
+        try:
+            company_result = await db.execute(select(Company).where(Company.id == company_id))
+            company = company_result.scalars().first()
+            if company and company.crm_type == 'internal':
+                logging.info(f"📢 Internal CRM: notifying managers for lead {lead.id}")
+                # Create lead event
+                await db.execute(text("""
+                    INSERT INTO lead_events (company_id, lead_id, event_type, data)
+                    VALUES (:cid, :lid, 'created', '{}')
+                """), {'cid': company_id, 'lid': lead.id})
+                await db.commit()
+        except Exception as e:
+            logging.error(f"CRM notification error: {e}")
     return lead
 
 async def get_user_language(db: AsyncSession, user_id: str):
@@ -698,6 +713,9 @@ async def upsert_company(data: dict, db: AsyncSession = Depends(get_db)):
     if 'integration_enabled' in data:
         company.integration_enabled = bool(data['integration_enabled'])
         logging.info(f'🔌 Updated integration_enabled for company {company_id}: {data["integration_enabled"]}')
+    if 'crm_type' in data:
+        company.crm_type = data['crm_type']
+        logging.info(f'📊 Updated crm_type for company {company_id}: {data["crm_type"]}')
     if 'integration_type' in data:
         company.integration_type = data['integration_type']
         logging.info(f'🔌 Updated integration_type for company {company_id}: {data["integration_type"]}')
@@ -1252,6 +1270,7 @@ async def get_all_companies(db: AsyncSession = Depends(get_db)):
             'avatar_limit': c.avatar_limit,
             'integration_enabled': c.integration_enabled or False,
             'integration_type': c.integration_type,
+            'crm_type': c.crm_type,
             'onec_enabled': c.onec_enabled or False,
             'onec_base_url': c.onec_base_url,
             'onec_username': c.onec_username,

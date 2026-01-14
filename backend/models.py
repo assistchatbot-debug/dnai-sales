@@ -51,6 +51,7 @@ class Company(Base):
     
     # === Интеграции 1С-CRM ===
     integration_enabled = Column(Boolean, default=False)
+    crm_type = Column(String(20), nullable=True)  # 'internal' or 'external'
     integration_type = Column(String, nullable=True)  # 'bitrix24', 'kommo', 'amocrm'
     
     # 1С OData (общие для всех CRM)
@@ -76,6 +77,7 @@ class Company(Base):
     
     # === Интеграции 1С-CRM ===
     integration_enabled = Column(Boolean, default=False)
+    crm_type = Column(String(20), nullable=True)  # 'internal' or 'external'
     integration_type = Column(String, nullable=True)  # 'bitrix24', 'kommo', 'amocrm'
     
     # 1С OData (общие для всех CRM)
