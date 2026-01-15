@@ -122,9 +122,12 @@ def get_status_keyboard(lead_id: int, statuses: list, current_status: str) -> In
             row = []
     if row: buttons.append(row)
     buttons.append([
-        InlineKeyboardButton(text="📝 Заметка", callback_data=f"lead_note:{lead_id}"),
+        InlineKeyboardButton(text="📝 Заметка", callback_data=f"lead_note:{lead_id}")
+    ])
+    buttons.append([
         InlineKeyboardButton(text="📞 Позвонить", callback_data=f"lead_call:{lead_id}"),
-        InlineKeyboardButton(text="💬 WhatsApp", callback_data=f"lead_wa:{lead_id}")
+        InlineKeyboardButton(text="💬 WhatsApp", callback_data=f"lead_wa:{lead_id}"),
+        InlineKeyboardButton(text="✈️ Telegram", callback_data=f"lead_tg:{lead_id}")
     ])
     buttons.append([InlineKeyboardButton(text="« Назад к списку", callback_data="back_to_leads")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -195,7 +198,7 @@ async def my_leads_handler(message: types.Message):
         async with aiohttp.ClientSession() as session:
             # Get leads (all for now, later filter by manager)
             async with session.get(
-                f'{API_BASE_URL}/crm/{company_id}/leads',
+                f'{API_BASE_URL}/sales/{company_id}/leads',
                 params={'limit': 20},
                 timeout=aiohttp.ClientTimeout(total=10)
             ) as resp:
@@ -399,7 +402,16 @@ async def call_lead_callback(callback: types.CallbackQuery):
     if lead:
         phone = (lead.get('contact_info', {}) or {}).get('phone', '')
         if phone:
-            await callback.answer(f"📞 {phone}", show_alert=True)
+            # Показать как кликабельную ссылку
+            clean_phone = phone.replace(' ', '').replace('-', '')
+            if not clean_phone.startswith('+'):
+                clean_phone = '+' + clean_phone
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text=f"📞 {phone}", url=f"tel:{clean_phone}")]
+            ])
+            await callback.message.answer("📞 Нажмите для звонка:", reply_markup=kb)
+            await callback.answer()
         else:
             await callback.answer("❌ Телефон не указан", show_alert=True)
     else:

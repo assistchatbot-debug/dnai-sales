@@ -149,6 +149,28 @@ async def register_manager(company_id: int, data: dict):
         await db.commit()
         return {"status": "ok", "message": "Registered successfully"}
 
+@router.get("/{company_id}/leads/{lead_id}")
+async def get_lead_details(company_id: int, lead_id: int):
+    """Get single lead details"""
+    async with get_db_session() as db:
+        result = await db.execute(text("""
+            SELECT id, contact_info, status, source, created_at, telegram_user_id
+            FROM leads WHERE company_id = :cid AND id = :lid
+        """), {'cid': company_id, 'lid': lead_id})
+        row = result.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Lead not found")
+        return {
+            'id': row[0],
+            'contact_info': row[1],
+            'status': row[2],
+            'source': row[3],
+            'created_at': str(row[4]) if row[4] else None,
+            'telegram_user_id': row[5]
+        }
+
+
+
 @router.get('/{company_id}/managers/{user_id}')
 async def get_manager(company_id: int, user_id: int):
     """Check if user is a manager"""
@@ -187,3 +209,90 @@ async def remove_manager(company_id: int, user_id: int):
         """), {'cid': company_id, 'uid': user_id})
         await db.commit()
         return {'success': True}
+
+@router.patch("/{company_id}/leads/{lead_id}/status")
+async def update_lead_status(company_id: int, lead_id: int, data: dict):
+    """Update lead status and award coins"""
+    new_status = data.get('status')
+    manager_id = data.get('manager_id')
+    
+    async with get_db_session() as db:
+        # Update lead status
+        await db.execute(text("""
+            UPDATE leads SET status = :status WHERE id = :lid AND company_id = :cid
+        """), {'status': new_status, 'lid': lead_id, 'cid': company_id})
+        
+        # Get status info for coins
+        status_result = await db.execute(text("""
+            SELECT name, coins FROM lead_status_settings 
+            WHERE company_id = :cid AND code = :code
+        """), {'cid': company_id, 'code': new_status})
+        status_row = status_result.fetchone()
+        
+        coins_earned = 0
+        status_name = new_status
+        
+        if status_row:
+            status_name = status_row[0]
+            coins_earned = status_row[1] or 0
+            
+            # Award coins to manager
+            if coins_earned > 0 and manager_id:
+                await db.execute(text("""
+                    UPDATE company_managers SET coins = coins + :coins 
+                    WHERE company_id = :cid AND user_id = :uid
+                """), {'coins': coins_earned, 'cid': company_id, 'uid': manager_id})
+        
+        # Log event
+        await db.execute(text("""
+            INSERT INTO lead_events (company_id, lead_id, event_type, data)
+            VALUES (:cid, :lid, 'status_changed', :data)
+        """), {'cid': company_id, 'lid': lead_id, 'data': f'{{"status": "{new_status}", "manager_id": {manager_id}}}'})
+        
+        await db.commit()
+        return {"status": "ok", "status_name": status_name, "coins_earned": coins_earned}
+
+
+@router.post("/{company_id}/leads/{lead_id}/notes")
+async def add_lead_note(company_id: int, lead_id: int, data: dict):
+    """Add note to lead"""
+    note_text = data.get('text', '')
+    manager_id = data.get('manager_id')
+    note_type = data.get('note_type', 'text')
+    
+    async with get_db_session() as db:
+        await db.execute(text("""
+            INSERT INTO lead_notes (company_id, lead_id, manager_id, note_type, content)
+            VALUES (:cid, :lid, :mid, :ntype, :content)
+        """), {'cid': company_id, 'lid': lead_id, 'mid': manager_id, 'ntype': note_type, 'content': note_text})
+        await db.commit()
+        return {"status": "ok"}
+
+
+@router.get("/{company_id}/managers/{user_id}")
+async def get_manager_info(company_id: int, user_id: int):
+    """Get manager info with stats"""
+    async with get_db_session() as db:
+        result = await db.execute(text("""
+            SELECT full_name, coins, 
+                   (SELECT COUNT(*) FROM lead_events WHERE data::text LIKE :uid_pattern) as leads_count,
+                   (SELECT COUNT(*) FROM leads WHERE company_id = :cid AND status = 'deal') as deals_count
+            FROM company_managers WHERE company_id = :cid AND user_id = :uid
+        """), {'cid': company_id, 'uid': user_id, 'uid_pattern': f'%{user_id}%'})
+        row = result.fetchone()
+        if row:
+            return {"full_name": row[0], "coins": row[1] or 0, "leads_count": row[2] or 0, "deals_count": row[3] or 0}
+        return {"coins": 0, "leads_count": 0, "deals_count": 0}
+
+
+@router.get("/{company_id}/leaderboard")
+async def get_leaderboard(company_id: int):
+    """Get managers leaderboard"""
+    async with get_db_session() as db:
+        result = await db.execute(text("""
+            SELECT full_name, coins FROM company_managers 
+            WHERE company_id = :cid AND is_active = TRUE
+            ORDER BY coins DESC LIMIT 10
+        """), {'cid': company_id})
+        return [{"full_name": r[0], "coins": r[1] or 0} for r in result.fetchall()]
+
