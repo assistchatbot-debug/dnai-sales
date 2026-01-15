@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy import text
 from typing import Optional
 from pydantic import BaseModel
@@ -124,7 +124,7 @@ async def get_managers(company_id: int):
 
 
 @router.post("/{company_id}/managers")
-async def register_manager(company_id: int, data: dict):
+async def register_manager(company_id: int, data: dict = Body(...)):
     """Register new manager for company"""
     user_id = data.get('telegram_id')
     telegram_username = data.get('telegram_username', '')
@@ -211,7 +211,7 @@ async def remove_manager(company_id: int, user_id: int):
         return {'success': True}
 
 @router.patch("/{company_id}/leads/{lead_id}/status")
-async def update_lead_status(company_id: int, lead_id: int, data: dict):
+async def update_lead_status(company_id: int, lead_id: int, data: dict = Body(...)):
     """Update lead status and award coins"""
     new_status = data.get('status')
     manager_id = data.get('manager_id')
@@ -254,17 +254,18 @@ async def update_lead_status(company_id: int, lead_id: int, data: dict):
 
 
 @router.post("/{company_id}/leads/{lead_id}/notes")
-async def add_lead_note(company_id: int, lead_id: int, data: dict):
+async def add_lead_note(company_id: int, lead_id: int, data: dict = Body(...)):
     """Add note to lead"""
     note_text = data.get('text', '')
-    manager_id = data.get('manager_id')
-    note_type = data.get('note_type', 'text')
+    user_id = data.get('manager_id')
+    user_name = data.get('user_name', 'Менеджер')
+    is_voice = data.get('is_voice', False)
     
     async with get_db_session() as db:
         await db.execute(text("""
-            INSERT INTO lead_notes (company_id, lead_id, manager_id, note_type, content)
-            VALUES (:cid, :lid, :mid, :ntype, :content)
-        """), {'cid': company_id, 'lid': lead_id, 'mid': manager_id, 'ntype': note_type, 'content': note_text})
+            INSERT INTO lead_notes (company_id, lead_id, user_id, user_name, content, is_voice)
+            VALUES (:cid, :lid, :uid, :uname, :content, :voice)
+        """), {'cid': company_id, 'lid': lead_id, 'uid': user_id, 'uname': user_name, 'content': note_text, 'voice': is_voice})
         await db.commit()
         return {"status": "ok"}
 
