@@ -308,6 +308,7 @@ async def background_send_notifications(lead_contact: str, history: list, summar
         if lead_id and summary:
             try:
                 from sqlalchemy import text
+                from database import get_db_session
                 async with get_db_session() as db:
                     await db.execute(text("""
                         UPDATE leads SET ai_summary = :summary, conversation_summary = :short
