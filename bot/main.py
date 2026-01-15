@@ -4,6 +4,7 @@ import logging
 import aiohttp
 from aiogram import Bot, Dispatcher
 from handlers import router
+from crm_handlers import crm_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -81,6 +82,7 @@ async def main():
     
     # Create single dispatcher for all bots
     dp = Dispatcher()
+    dp.include_router(crm_router)
     dp.include_router(router)
     
     logging.info(f"✅ Starting polling for {len(bots)} bot(s)...")

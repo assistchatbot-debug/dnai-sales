@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from typing import Optional
 from pydantic import BaseModel
@@ -120,6 +120,34 @@ async def get_managers(company_id: int):
         """), {'cid': company_id})
         return [{'id': r[0], 'user_id': r[1], 'telegram_username': r[2], 'full_name': r[3], 
                  'is_active': r[4], 'created_at': r[5].isoformat() if r[5] else None} for r in result.fetchall()]
+
+
+
+@router.post("/{company_id}/managers")
+async def register_manager(company_id: int, data: dict):
+    """Register new manager for company"""
+    user_id = data.get('telegram_id')
+    telegram_username = data.get('telegram_username', '')
+    full_name = data.get('full_name', 'Менеджер')
+    
+    async with get_db_session() as db:
+        # Check if already exists
+        result = await db.execute(text("""
+            SELECT id FROM company_managers 
+            WHERE company_id = :cid AND user_id = :uid
+        """), {'cid': company_id, 'uid': user_id})
+        
+        if result.fetchone():
+            return {"status": "exists", "message": "Already registered"}
+        
+        # Insert new manager
+        await db.execute(text("""
+            INSERT INTO company_managers (company_id, user_id, telegram_username, full_name, is_active)
+            VALUES (:cid, :uid, :username, :name, true)
+        """), {'cid': company_id, 'uid': user_id, 'username': telegram_username, 'name': full_name})
+        
+        await db.commit()
+        return {"status": "ok", "message": "Registered successfully"}
 
 @router.get('/{company_id}/managers/{user_id}')
 async def get_manager(company_id: int, user_id: int):
