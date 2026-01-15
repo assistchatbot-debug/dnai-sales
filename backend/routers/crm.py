@@ -225,8 +225,8 @@ async def update_lead_status(company_id: int, lead_id: int, data: dict):
         # Get status info for coins
         status_result = await db.execute(text("""
             SELECT name, coins FROM lead_status_settings 
-            WHERE company_id = :cid AND code = :code
-        """), {'cid': company_id, 'code': new_status})
+            WHERE company_id = :cid AND id = :sid
+        """), {'cid': company_id, 'sid': int(new_status) if new_status.isdigit() else 1})
         status_row = status_result.fetchone()
         
         coins_earned = 0

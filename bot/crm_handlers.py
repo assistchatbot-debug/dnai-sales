@@ -402,15 +402,7 @@ async def call_lead_callback(callback: types.CallbackQuery):
     if lead:
         phone = (lead.get('contact_info', {}) or {}).get('phone', '')
         if phone:
-            # Показать как кликабельную ссылку
-            clean_phone = phone.replace(' ', '').replace('-', '')
-            if not clean_phone.startswith('+'):
-                clean_phone = '+' + clean_phone
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text=f"📞 {phone}", url=f"tel:{clean_phone}")]
-            ])
-            await callback.message.answer("📞 Нажмите для звонка:", reply_markup=kb)
+            await callback.message.answer(f"📞 <b>Позвонить</b>\n\n<code>{phone}</code>\n\n<i>Нажмите чтобы скопировать номер</i>", parse_mode='HTML')
             await callback.answer()
         else:
             await callback.answer("❌ Телефон не указан", show_alert=True)
@@ -426,7 +418,10 @@ async def whatsapp_lead_callback(callback: types.CallbackQuery):
     if lead:
         phone = (lead.get('contact_info', {}) or {}).get('phone', '').replace('+', '').replace(' ', '').replace('-', '')
         if phone:
-            await callback.message.answer(f"💬 <b>WhatsApp:</b>\nhttps://wa.me/{phone}", parse_mode='HTML')
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="💬 Открыть WhatsApp", url=f"https://wa.me/{phone}")]
+            ])
+            await callback.message.answer("💬 <b>WhatsApp</b>", parse_mode='HTML', reply_markup=kb)
             await callback.answer()
         else:
             await callback.answer("❌ Телефон не указан", show_alert=True)
