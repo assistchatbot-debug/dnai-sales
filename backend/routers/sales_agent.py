@@ -610,7 +610,11 @@ async def get_all_leads(limit: int = 20, db: AsyncSession = Depends(get_db)):
                 'status': lead.status,
                 'source': source,
                 'temperature': temperature,
-                'created_at': created_at
+                'created_at': created_at,
+                'assigned_user_id': lead.assigned_user_id if hasattr(lead, 'assigned_user_id') else None,
+                'assigned_user_name': lead.assigned_user_name if hasattr(lead, 'assigned_user_name') else None,
+                'status_emoji': lead.status_emoji if hasattr(lead, 'status_emoji') else '🆕',
+                'status_name': lead.status_name if hasattr(lead, 'status_name') else 'Новый'
             })
         
         return {'leads': leads_data, 'count': len(leads_data)}
