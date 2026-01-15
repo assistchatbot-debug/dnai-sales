@@ -304,6 +304,20 @@ async def background_send_notifications(lead_contact: str, history: list, summar
     try:
         logging.info(f'📬 Starting background notification tasks for {phone}, company_id={company_id}')
         
+        # Сохранить AI summary в БД сразу
+        if lead_id and summary:
+            try:
+                from sqlalchemy import text
+                async with get_db_session() as db:
+                    await db.execute(text("""
+                        UPDATE leads SET ai_summary = :summary, conversation_summary = :short
+                        WHERE id = :lid
+                    """), {'summary': summary, 'short': summary[:500], 'lid': lead_id})
+                    await db.commit()
+                    logging.info(f'💾 AI summary saved to DB for lead {lead_id}')
+            except Exception as e:
+                logging.error(f'Failed to save AI summary: {e}')
+        
         # Get company from DB for multitenancy
         from database import get_db_session
         from models import Company
@@ -576,8 +590,14 @@ async def sales_chat(request: Request, company_id: int, chat_data: ChatMessage, 
                 lead.contact_info = {}
             lead.contact_info['temperature'] = temperature
             flag_modified(lead, 'contact_info')
+            
+            # Сохранить AI summary в БД
+            lead.ai_summary = summary
+            lead.conversation_summary = summary[:500]  # краткая версия
+            
             await db.commit()
             logging.info(f'🌡 Temperature saved: {temperature}')
+            logging.info(f'💾 AI summary saved: {len(summary)} chars')
             
             background_tasks.add_task(
                 background_send_notifications,
