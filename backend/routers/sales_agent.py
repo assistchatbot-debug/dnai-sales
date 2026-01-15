@@ -328,7 +328,7 @@ async def background_send_notifications(lead_contact: str, history: list, summar
                 ai_summary=summary,
                 lead_phone=phone,
                 bot_token=company_bot_token,
-                admin_chat_id=company_manager_id
+                manager_chat_id=company_manager_id
             )
             logging.info(f'✅ Telegram notification completed for {phone}')
         except Exception as e:

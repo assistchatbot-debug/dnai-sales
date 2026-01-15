@@ -357,24 +357,34 @@ async def process_admin_command(message: types.Message, text: str, state: FSMCon
     elif 'менеджеры' in text_lower:
         company_id = getattr(message.bot, 'company_id', 1)
         try:
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             async with aiohttp.ClientSession() as session:
                 async with session.get(f'{API_BASE_URL}/crm/{company_id}/managers') as resp:
                     if resp.status == 200:
                         managers = await resp.json()
+                        # Сортировка по монеткам (убывание)
+                        managers = sorted(managers, key=lambda x: x.get('coins', 0), reverse=True)
                         text_msg = "👥 <b>Менеджеры компании</b>\n\n"
+                        buttons = []
                         if managers:
-                            for m in managers:
-                                status = "✅" if m.get('is_active') else "❌"
-                                text_msg += f"{status} {m.get('full_name', 'Без имени')} (@{m.get('telegram_username', '?')})\n"
+                            for i, m in enumerate(managers):
+                                coins = m.get('coins', 0)
+                                leads = m.get('leads_count', 0)
+                                name = m.get('full_name', 'Без имени')
+                                user_id = m.get('user_id', 0)
+                                medal = ['🥇', '🥈', '🥉'][i] if i < 3 else f"{i+1}."
+                                text_msg += f"{medal} {name} — {coins}💰\n"
+                                buttons.append([InlineKeyboardButton(text=f"📊 {name}", callback_data=f"mgr_kpi:{user_id}")])
                         else:
                             text_msg += "Пока нет менеджеров\n"
-                        text_msg += "\n<b>Чтобы добавить:</b> менеджер пишет /join"
-                        await message.answer(text_msg, parse_mode='HTML')
+                        text_msg += "\n<i>Нажмите для KPI</i>\n<b>Добавить:</b> /join"
+                        kb = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
+                        await message.answer(text_msg, parse_mode='HTML', reply_markup=kb)
                     else:
-                        await message.answer("📋 Менеджеры: 0\n\nЧтобы добавить: менеджер пишет /join")
+                        await message.answer("📋 Менеджеры: 0\n\nЧтобы добавить: /join")
         except Exception as e:
             logging.error(f"Managers error: {e}")
-            await message.answer("📋 Менеджеры: 0\n\nЧтобы добавить: менеджер пишет /join")
+            await message.answer("📋 Менеджеры: 0\n\nЧтобы добавить: /join")
 
     elif 'статус' in text_lower or 'status' in text_lower:
         company_id = getattr(message.bot, 'company_id', 1)
@@ -1921,3 +1931,26 @@ async def handle_internal_crm(callback: types.CallbackQuery):
             parse_mode='HTML'
         )
         await callback.answer()
+
+@router.callback_query(F.data.startswith("mgr_kpi:"))
+async def manager_kpi_callback(callback: types.CallbackQuery):
+    """Show manager KPI for admin"""
+    user_id = int(callback.data.split(":")[1])
+    company_id = getattr(callback.bot, 'company_id', 1)
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f'{API_BASE_URL}/crm/{company_id}/managers/{user_id}') as resp:
+                if resp.status == 200:
+                    m = await resp.json()
+                    text = f"📊 <b>KPI: {m.get('full_name', '?')}</b>\n\n"
+                    text += f"💰 Монетки: {m.get('coins', 0)}\n"
+                    text += f"📋 Лидов: {m.get('leads_count', 0)}\n"
+                    text += f"✅ Сделок: {m.get('deals_count', 0)}"
+                    await callback.message.answer(text, parse_mode='HTML')
+                    await callback.answer()
+                else:
+                    await callback.answer("Ошибка", show_alert=True)
+    except Exception as e:
+        logging.error(f"KPI error: {e}")
+        await callback.answer("Ошибка", show_alert=True)
+
