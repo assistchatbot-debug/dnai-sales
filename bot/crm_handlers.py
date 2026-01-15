@@ -455,6 +455,54 @@ async def note_save(message: types.Message, state: FSMContext):
         await message.answer("❌ Ошибка")
     await state.clear()
 
+# === Новый лид - показать полный отчет ===
+@crm_router.callback_query(F.data.startswith("new_lead:"))
+async def new_lead_callback(callback: types.CallbackQuery):
+    """Show full AI report when manager clicks new lead notification"""
+    lead_id = int(callback.data.split(":")[1])
+    company_id = callback.bot.company_id
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f'{API_BASE_URL}/crm/{company_id}/leads/{lead_id}/full_report') as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    
+                    # Форматировать как в email
+                    text = f"🆕 <b>Новый лид от BizDNAi</b>\n\n"
+                    text += f"👤 <b>Имя:</b> {data['name']}\n"
+                    text += f"📞 <b>Телефон:</b> {data['phone']}\n\n"
+                    
+                    if data.get('temperature'):
+                        text += f"🌡 <b>Температура:</b> {data['temperature']}\n\n"
+                    
+                    if data.get('ai_summary'):
+                        text += f"🤖 <b>Анализ AI:</b>\n{data['ai_summary'][:2000]}\n\n"
+                    
+                    # История диалога
+                    if data.get('conversation_history'):
+                        text += "💬 <b>История диалога:</b>\n"
+                        for msg in data['conversation_history'][-10:]:
+                            sender_icon = "🧑" if msg['sender'] == 'user' else "🤖"
+                            text += f"{sender_icon} {msg['text'][:100]}\n\n"
+                    
+                    kb = InlineKeyboardMarkup(inline_keyboard=[[
+                        InlineKeyboardButton(text="📋 Открыть карточку", callback_data=f"vld:{lead_id}")
+                    ]])
+                    
+                    # Разбить на куски если длинное
+                    if len(text) > 4000:
+                        await callback.message.edit_text(text[:4000], parse_mode='HTML')
+                        await callback.message.answer(text[4000:8000], parse_mode='HTML', reply_markup=kb)
+                    else:
+                        await callback.message.edit_text(text, parse_mode='HTML', reply_markup=kb)
+                    await callback.answer()
+                else:
+                    await callback.answer("❌ Ошибка загрузки", show_alert=True)
+    except Exception as e:
+        logging.error(f"New lead callback: {e}")
+        await callback.answer("❌ Ошибка", show_alert=True)
+
 # === Назад ===
 @crm_router.callback_query(F.data == "back_leads")
 async def back(callback: types.CallbackQuery):

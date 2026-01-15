@@ -290,3 +290,44 @@ async def delete_manager(company_id: int, user_id: int):
         await db.commit()
         return {"status": "ok"}
 
+
+
+@router.get("/{company_id}/leads/{lead_id}/full_report")
+async def get_full_report(company_id: int, lead_id: int):
+    """Get full AI report with conversation history"""
+    async with get_db_session() as db:
+        # Lead info
+        result = await db.execute(text("""
+            SELECT contact_info, ai_summary, conversation_summary, temperature
+            FROM leads WHERE company_id = :cid AND id = :lid
+        """), {'cid': company_id, 'lid': lead_id})
+        row = result.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Lead not found")
+        
+        contact = row[0] or {}
+        name = contact.get('name', 'Клиент')
+        phone = contact.get('phone', '')
+        temp = contact.get('temperature', '')
+        ai_summary = row[1] or ''
+        
+        # Conversation history
+        history_result = await db.execute(text("""
+            SELECT content, outcome FROM interactions 
+            WHERE lead_id = :lid ORDER BY created_at
+        """), {'lid': lead_id})
+        rows = history_result.fetchall()
+        conversation = []
+        for r in rows:
+            if r[0]:  # user message
+                conversation.append({"sender": "user", "text": r[0]})
+            if r[1]:  # bot response
+                conversation.append({"sender": "bot", "text": r[1]})
+        
+        return {
+            "name": name,
+            "phone": phone,
+            "temperature": temp,
+            "ai_summary": ai_summary,
+            "conversation_history": conversation
+        }

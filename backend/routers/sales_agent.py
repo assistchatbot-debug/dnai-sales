@@ -4,6 +4,7 @@ import httpx
 import os
 import logging
 import asyncio
+import aiohttp
 import asyncio
 
 async def analyze_lead_temperature(history: list) -> str:
@@ -296,7 +297,7 @@ async def get_conversation_history(db: AsyncSession, lead_id: int, limit: int = 
     logging.info(f'📚 Loaded history: {len(history)} messages for lead {lead_id}')
     return history[-limit:]
 
-async def background_send_notifications(lead_contact: str, history: list, summary: str, phone: str, company_id: int = 1):
+async def background_send_notifications(lead_contact: str, history: list, summary: str, phone: str, company_id: int = 1, lead_id: int = None):
     """
     Sends notifications to both Telegram and Email using company data from DB
     """
@@ -320,19 +321,39 @@ async def background_send_notifications(lead_contact: str, history: list, summar
             logging.error(f'❌ Company {company_id} not found in database - cannot send notifications')
             return  # Don't send notifications if company not found
         
-        # Send to Telegram using company's bot and manager
+        # Send to Telegram: notify ALL active managers (not admin)
         try:
-            await telegram_service.send_lead_notification(
-                lead_contact=lead_contact,
-                conversation_history=history,
-                ai_summary=summary,
-                lead_phone=phone,
-                bot_token=company_bot_token,
-                manager_chat_id=company_manager_id
-            )
-            logging.info(f'✅ Telegram notification completed for {phone}')
+            from sqlalchemy import text
+            async with get_db_session() as db:
+                result = await db.execute(text("""
+                    SELECT user_id, full_name FROM company_managers 
+                    WHERE company_id = :cid AND is_active = true
+                """), {'cid': company_id})
+                managers = result.fetchall()
+                
+                if managers:
+                    async with aiohttp.ClientSession() as session:
+                        for mgr in managers:
+                            mgr_user_id, mgr_name = mgr[0], mgr[1]
+                            try:
+                                bot_url = f"https://api.telegram.org/bot{company_bot_token}/sendMessage"
+                                await session.post(bot_url, json={
+                                    'chat_id': mgr_user_id,
+                                    'text': f"🔔 Новый лид от {company.name}",
+                                    'reply_markup': {
+                                        'inline_keyboard': [[{
+                                            'text': f"🆕 {lead_contact}",
+                                            'callback_data': f"new_lead:{lead_id}"
+                                        }]]
+                                    }
+                                })
+                                logging.info(f'✅ Notification sent to manager {mgr_user_id} ({mgr_name})')
+                            except Exception as e:
+                                logging.error(f'Manager {mgr_user_id} notify error: {e}')
+                else:
+                    logging.warning(f'No active managers for company {company_id}')
         except Exception as e:
-            logging.error(f'❌ Telegram notification failed: {e}')
+            logging.error(f'❌ Managers notification failed: {e}')
         
         # Send to Email using company email
         try:
@@ -564,7 +585,8 @@ async def sales_chat(request: Request, company_id: int, chat_data: ChatMessage, 
                 history=full_history,
                 summary=summary,
                 phone=lead.contact_info.get('phone') if lead.contact_info else phone_number,
-                company_id=company_id
+                company_id=company_id,
+                lead_id=lead.id
             )
             logging.info(f'📬 Background task added for Telegram & Email notifications')
             # Send to Bitrix24 CRM if integration enabled
