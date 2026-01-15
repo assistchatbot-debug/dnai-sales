@@ -1116,6 +1116,101 @@ async def process_edit_domain(message: types.Message, state: FSMContext):
         await state.clear()
 
 
+
+
+@router.callback_query(F.data.startswith("crm_ext:"))
+async def handle_external_crm(callback: types.CallbackQuery):
+    """Handle external CRM settings (Bitrix24, Kommo) - toggle ON/OFF"""
+    if not is_admin(callback.from_user.id, callback.bot):
+        await callback.answer("❌ Недостаточно прав", show_alert=True)
+        return
+    
+    action = callback.data.split(":")[1]
+    company_id = getattr(callback.bot, 'company_id', 1)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    
+    # Получаем текущий статус
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f'{API_BASE_URL}/sales/companies/all') as resp:
+                data = await resp.json()
+                company = next((c for c in data if c.get('id') == company_id), None)
+                current_enabled = company.get('integration_enabled', False) if company else False
+                current_type = company.get('integration_type', '') if company else ''
+    except:
+        current_enabled = False
+        current_type = ''
+    
+    if action == "bitrix24":
+        # Toggle: если уже включен Bitrix24 - выключаем, иначе включаем
+        if current_enabled and current_type == 'bitrix24':
+            # Выключаем
+            try:
+                async with aiohttp.ClientSession() as session:
+                    await session.post(f'{API_BASE_URL}/sales/company/upsert',
+                        json={'id': company_id, 'integration_enabled': False})
+                await callback.answer("❌ Bitrix24 выключен")
+                kb = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="✅ Включить Bitrix24", callback_data="crm_ext:bitrix24")],
+                    [InlineKeyboardButton(text="🟣 Kommo", callback_data="crm_ext:kommo")]
+                ])
+                await callback.message.edit_text("❌ <b>Bitrix24 выключен</b>\n\nЛиды сохраняются только в BizDNAi.", parse_mode='HTML', reply_markup=kb)
+            except Exception as e:
+                await callback.answer(f"❌ Ошибка: {str(e)[:30]}", show_alert=True)
+        else:
+            # Включаем
+            try:
+                async with aiohttp.ClientSession() as session:
+                    await session.post(f'{API_BASE_URL}/sales/company/upsert',
+                        json={'id': company_id, 'integration_type': 'bitrix24', 'integration_enabled': True})
+                await callback.answer("✅ Bitrix24 включён!")
+                kb = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="❌ Выключить Bitrix24", callback_data="crm_ext:bitrix24")],
+                    [InlineKeyboardButton(text="🟣 Kommo", callback_data="crm_ext:kommo")]
+                ])
+                await callback.message.edit_text("✅ <b>Bitrix24 включён!</b>\n\nЛиды автоматически отправляются в Bitrix24.", parse_mode='HTML', reply_markup=kb)
+            except Exception as e:
+                await callback.answer(f"❌ Ошибка: {str(e)[:30]}", show_alert=True)
+    
+    elif action == "kommo":
+        # Toggle для Kommo
+        if current_enabled and current_type == 'kommo':
+            try:
+                async with aiohttp.ClientSession() as session:
+                    await session.post(f'{API_BASE_URL}/sales/company/upsert',
+                        json={'id': company_id, 'integration_enabled': False})
+                await callback.answer("❌ Kommo выключен")
+                kb = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="📘 Bitrix24", callback_data="crm_ext:bitrix24")],
+                    [InlineKeyboardButton(text="✅ Включить Kommo", callback_data="crm_ext:kommo")]
+                ])
+                await callback.message.edit_text("❌ <b>Kommo выключен</b>\n\nЛиды сохраняются только в BizDNAi.", parse_mode='HTML', reply_markup=kb)
+            except Exception as e:
+                await callback.answer(f"❌ Ошибка: {str(e)[:30]}", show_alert=True)
+        else:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    await session.post(f'{API_BASE_URL}/sales/company/upsert',
+                        json={'id': company_id, 'integration_type': 'kommo', 'integration_enabled': True})
+                await callback.answer("✅ Kommo включён!")
+                kb = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="📘 Bitrix24", callback_data="crm_ext:bitrix24")],
+                    [InlineKeyboardButton(text="❌ Выключить Kommo", callback_data="crm_ext:kommo")]
+                ])
+                await callback.message.edit_text("✅ <b>Kommo включён!</b>\n\nЛиды автоматически отправляются в Kommo.", parse_mode='HTML', reply_markup=kb)
+            except Exception as e:
+                await callback.answer(f"❌ Ошибка: {str(e)[:30]}", show_alert=True)
+    
+    elif action == "disable":
+        try:
+            async with aiohttp.ClientSession() as session:
+                await session.post(f'{API_BASE_URL}/sales/company/upsert',
+                    json={'id': company_id, 'integration_enabled': False})
+            await callback.answer("❌ Внешняя CRM отключена")
+            await callback.message.edit_text("❌ <b>Внешняя CRM отключена</b>\n\nЛиды сохраняются только в BizDNAi.", parse_mode='HTML')
+        except Exception as e:
+            await callback.answer(f"❌ Ошибка: {str(e)[:30]}", show_alert=True)
+
 @router.callback_query(F.data == "toggle_crm_integration")
 async def toggle_crm_integration_callback(callback: types.CallbackQuery):
     """Toggle CRM integration ON/OFF for manager"""
