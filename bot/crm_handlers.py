@@ -301,8 +301,13 @@ async def show_leads_page(message_or_callback, offset: int, mode: str = 'all', f
                         phone = contact.get('phone', '')
                         lead_id = lead.get('id', 0)
                         assigned = lead.get('assigned_user_id')
-                        icon = "👨‍💼" if assigned else "🆕"
-                        text += f"{icon} #{lead_id} {name} {phone}\n"
+                        # Иконки: мой/чужой/новый
+                        if not assigned:
+                            icon = "🆕"
+                        elif assigned == user_id:
+                            icon = "👨‍💼"
+                        else:
+                            icon = "👤"
                         buttons.append([InlineKeyboardButton(text=f"{icon} #{lead_id} {name} {phone}", callback_data=f"vld:{lead_id}")])
                     
                     # Навигация
