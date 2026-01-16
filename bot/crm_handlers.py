@@ -13,6 +13,7 @@ crm_router = Router()
 class CRMStates(StatesGroup):
     entering_note = State()
     join_firstname = State()
+    waiting_for_deal_amount = State()
     join_lastname = State()
     join_phone = State()
 
@@ -126,6 +127,17 @@ def format_lead_card(lead: dict, statuses: list = None) -> str:
             card += f"\n\n<b>Интересы:</b>\n{interests}"
 
     card += f"\n\n<b>📊 Статус:</b> {status_emoji} {status_name}"
+    
+    # Показать сделки
+    deals = lead.get('deals', [])
+    if deals:
+        card += "\n\n<b>💰 Сделки:</b>"
+        for d in deals:
+            num = d.get('deal_number', 1)
+            amount = d.get('deal_amount', 0)
+            currency = d.get('deal_currency', 'KZT')
+            formatted = f"{amount:,.0f}".replace(',', ' ')
+            card += f"\n💰 Сделка {num}: {formatted} {currency}"
     
     # Показать заметки
     notes = lead.get('notes', [])
@@ -393,7 +405,7 @@ async def take_lead(callback: types.CallbackQuery):
 
 # === Смена статуса ===
 @crm_router.callback_query(F.data.startswith("lst:"))
-async def change_status(callback: types.CallbackQuery):
+async def change_status(callback: types.CallbackQuery, state: FSMContext):
     parts = callback.data.split(":")
     lead_id, new_status = int(parts[1]), parts[2]
     company_id = callback.bot.company_id
@@ -405,6 +417,20 @@ async def change_status(callback: types.CallbackQuery):
                     result = await resp.json()
                     coins = result.get('coins_earned', 0)
                     name = result.get('status_name', 'OK')
+                    
+                    # Если требуется ввод суммы (статус "Завершён")
+                    if result.get('requires_amount'):
+                        await state.set_state(CRMStates.waiting_for_deal_amount)
+                        await state.update_data(
+                            deal_lead_id=lead_id,
+                            deal_id=result.get('deal_id'),
+                            deal_currency=result.get('currency', 'KZT')
+                        )
+                        currency = result.get('currency', 'KZT')
+                        await callback.message.answer(f"💰 Введите сумму сделки ({currency}):")
+                        await callback.answer(f"✅ {name}" + (f" +{coins}💰" if coins > 0 else ""))
+                        return
+                    
                     await callback.answer(f"✅ {name}" + (f" +{coins}💰" if coins > 0 else ""), show_alert=coins > 0)
                     lead = await get_lead_details(company_id, lead_id)
                     statuses = await get_statuses(company_id)
@@ -511,6 +537,45 @@ async def new_lead_callback(callback: types.CallbackQuery):
     except Exception as e:
         logging.error(f"New lead callback: {e}")
         await callback.answer("❌ Ошибка", show_alert=True)
+
+
+# === Ввод суммы сделки ===
+@crm_router.message(CRMStates.waiting_for_deal_amount)
+async def process_deal_amount(message: types.Message, state: FSMContext):
+    amount_text = message.text.replace(' ', '').replace(',', '.')
+    try:
+        amount = float(amount_text)
+        if amount <= 0:
+            await message.answer("❌ Сумма должна быть положительной")
+            return
+    except ValueError:
+        await message.answer("❌ Введите число. Например: 150000")
+        return
+    
+    data = await state.get_data()
+    lead_id = data['deal_lead_id']
+    deal_id = data['deal_id']
+    currency = data['deal_currency']
+    company_id = message.bot.company_id
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.patch(
+                f'{API_BASE_URL}/crm/{company_id}/leads/{lead_id}/deal/{deal_id}',
+                json={'amount': amount, 'manager_id': message.from_user.id}
+            ) as resp:
+                if resp.status == 200:
+                    result = await resp.json()
+                    deal_num = result.get('deal_number', 1)
+                    formatted = f"{amount:,.0f}".replace(',', ' ')
+                    await message.answer(f"✅ Сделка {deal_num}: {formatted} {currency}")
+                else:
+                    await message.answer("❌ Ошибка сохранения")
+    except Exception as e:
+        logging.error(f"Deal save: {e}")
+        await message.answer("❌ Ошибка")
+    
+    await state.clear()
 
 # === Назад ===
 @crm_router.callback_query(F.data == "back_leads")

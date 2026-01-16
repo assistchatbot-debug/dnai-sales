@@ -60,6 +60,17 @@ async def get_lead_details(company_id: int, lead_id: int):
         notes = [{"user_name": n[0], "content": n[1], "created_at": str(n[2]) if n[2] else None} 
                  for n in notes_result.fetchall()]
         
+        # Get deals
+        deals_result = await db.execute(text("""
+            SELECT deal_number, deal_amount, deal_currency, status, created_at
+            FROM lead_deals WHERE lead_id = :lid ORDER BY deal_number
+        """), {'lid': lead_id})
+        deals = [
+            {"deal_number": d[0], "deal_amount": float(d[1]) if d[1] else 0, 
+             "deal_currency": d[2] or 'KZT', "status": d[3]}
+            for d in deals_result.fetchall()
+        ]
+        
         return {
             'id': row[0],
             'contact_info': row[1],
@@ -74,7 +85,8 @@ async def get_lead_details(company_id: int, lead_id: int):
             'temperature': row[10],
             'status_emoji': row[11] or '🆕',
             'status_name': row[12] or 'Новый',
-            'notes': notes
+            'notes': notes,
+            'deals': deals
         }
 
 
@@ -153,7 +165,95 @@ async def update_lead_status(company_id: int, lead_id: int, data: dict = Body(..
             """), {'coins': coins, 'cid': company_id, 'uid': manager_id})
         
         await db.commit()
+        
+        # Если статус "Завершён" (id=20) — создать сделку и запросить сумму
+        if status_id == 20:
+            # Получить валюту компании
+            curr_result = await db.execute(text("""
+                SELECT currency FROM companies WHERE id = :cid
+            """), {'cid': company_id})
+            currency = curr_result.scalar() or 'KZT'
+            
+            # Определить номер сделки
+            count_result = await db.execute(text("""
+                SELECT COUNT(*) FROM lead_deals WHERE lead_id = :lid
+            """), {'lid': lead_id})
+            deal_count = count_result.scalar() or 0
+            deal_number = deal_count + 1
+            
+            # Получить имя менеджера
+            mgr_result = await db.execute(text("""
+                SELECT full_name FROM company_managers WHERE company_id = :cid AND user_id = :uid
+            """), {'cid': company_id, 'uid': manager_id})
+            mgr_name = mgr_result.scalar() or 'Менеджер'
+            
+            # Создать запись сделки (без суммы)
+            deal_result = await db.execute(text("""
+                INSERT INTO lead_deals (lead_id, company_id, manager_id, manager_name, deal_number, deal_currency, status)
+                VALUES (:lid, :cid, :mid, :mname, :dnum, :curr, 'pending_amount')
+                RETURNING id
+            """), {'lid': lead_id, 'cid': company_id, 'mid': manager_id, 'mname': mgr_name, 'dnum': deal_number, 'curr': currency})
+            deal_id = deal_result.scalar()
+            
+            # Обновить текущий deal_id в leads
+            await db.execute(text("""
+                UPDATE leads SET current_deal_id = :did, current_deal_status = 'pending_amount' WHERE id = :lid
+            """), {'did': deal_id, 'lid': lead_id})
+            await db.commit()
+            
+            return {
+                "status": "ok", 
+                "status_name": name, 
+                "coins_earned": coins or 0,
+                "requires_amount": True,
+                "deal_id": deal_id,
+                "currency": currency
+            }
+        
         return {"status": "ok", "status_name": name, "coins_earned": coins or 0}
+
+
+
+
+@router.patch("/{company_id}/leads/{lead_id}/deal/{deal_id}")
+async def save_deal_amount(company_id: int, lead_id: int, deal_id: int, data: dict = Body(...)):
+    """Save deal amount and update manager stats"""
+    amount = data.get('amount', 0)
+    manager_id = data.get('manager_id')
+    
+    async with get_db_session() as db:
+        # 1. Обновить сумму и статус в lead_deals
+        await db.execute(text("""
+            UPDATE lead_deals SET deal_amount = :amount, status = 'completed'
+            WHERE id = :did
+        """), {'amount': amount, 'did': deal_id})
+        
+        # 2. Получить deal_number и currency
+        result = await db.execute(text("""
+            SELECT deal_number, deal_currency FROM lead_deals WHERE id = :did
+        """), {'did': deal_id})
+        row = result.fetchone()
+        deal_number = row[0] if row else 1
+        currency = row[1] if row else 'KZT'
+        
+        # 3. Обновить leads.deal_amount и статус
+        await db.execute(text("""
+            UPDATE leads SET deal_amount = :amount, deal_currency = :curr, current_deal_status = 'completed'
+            WHERE id = :lid
+        """), {'amount': amount, 'curr': currency, 'lid': lead_id})
+        
+        # 4. Обновить статистику менеджера
+        if manager_id:
+            await db.execute(text("""
+                UPDATE company_managers 
+                SET total_deal_amount = COALESCE(total_deal_amount, 0) + :amount,
+                    deals_count = COALESCE(deals_count, 0) + 1
+                WHERE company_id = :cid AND user_id = :mid
+            """), {'amount': amount, 'cid': company_id, 'mid': manager_id})
+        
+        await db.commit()
+        
+        return {"status": "ok", "deal_number": deal_number, "currency": currency}
 
 
 @router.post("/{company_id}/leads/{lead_id}/notes")
