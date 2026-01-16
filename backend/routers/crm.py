@@ -137,6 +137,10 @@ async def update_lead_status(company_id: int, lead_id: int, data: dict = Body(..
     new_status = data.get('status')
     manager_id = data.get('manager_id')
     
+    # "Повторная сделка" (28) → сбросить на "В работе" (8)
+    if str(new_status) == '28':
+        new_status = '8'  # В работе
+    
     async with get_db_session() as db:
         # Get status info
         status_result = await db.execute(text("""
@@ -338,9 +342,10 @@ async def register_manager(company_id: int, data: dict = Body(...)):
 async def get_manager_info(company_id: int, user_id: int):
     """Get manager stats"""
     async with get_db_session() as db:
-        # Manager info
+        # Manager info с deals_count и total_deal_amount
         mgr = await db.execute(text("""
-            SELECT full_name, coins FROM company_managers WHERE company_id = :cid AND user_id = :uid
+            SELECT full_name, coins, deals_count, total_deal_amount 
+            FROM company_managers WHERE company_id = :cid AND user_id = :uid
         """), {'cid': company_id, 'uid': user_id})
         mgr_row = mgr.fetchone()
         
@@ -353,17 +358,12 @@ async def get_manager_info(company_id: int, user_id: int):
         """), {'cid': company_id, 'uid': user_id})
         leads_count = leads.scalar() or 0
         
-        # Count deals
-        deals = await db.execute(text("""
-            SELECT COUNT(*) FROM leads WHERE company_id = :cid AND assigned_user_id = :uid AND status_name IN ('Сделка', 'Завершён', 'Закрыт')
-        """), {'cid': company_id, 'uid': user_id})
-        deals_count = deals.scalar() or 0
-        
         return {
             "full_name": mgr_row[0],
             "coins": mgr_row[1] or 0,
             "leads_count": leads_count,
-            "deals_count": deals_count
+            "deals_count": mgr_row[2] or 0,
+            "total_deal_amount": float(mgr_row[3]) if mgr_row[3] else 0
         }
 
 

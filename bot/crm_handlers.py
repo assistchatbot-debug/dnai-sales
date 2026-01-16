@@ -128,16 +128,16 @@ def format_lead_card(lead: dict, statuses: list = None) -> str:
 
     card += f"\n\n<b>📊 Статус:</b> {status_emoji} {status_name}"
     
-    # Показать сделки
+    # Показать сделки (только с суммой > 0, нумерация 1, 2, 3)
     deals = lead.get('deals', [])
-    if deals:
+    completed_deals = [d for d in deals if d.get('deal_amount', 0) > 0]
+    if completed_deals:
         card += "\n\n<b>💰 Сделки:</b>"
-        for d in deals:
-            num = d.get('deal_number', 1)
+        for i, d in enumerate(completed_deals, 1):
             amount = d.get('deal_amount', 0)
             currency = d.get('deal_currency', 'KZT')
             formatted = f"{amount:,.0f}".replace(',', ' ')
-            card += f"\n💰 Сделка {num}: {formatted} {currency}"
+            card += f"\n💰 Сделка {i}: {formatted} {currency}"
     
     # Показать заметки
     notes = lead.get('notes', [])
