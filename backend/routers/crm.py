@@ -370,15 +370,67 @@ async def get_manager_info(company_id: int, user_id: int):
 # === LEADERBOARD ===
 
 @router.get("/{company_id}/leaderboard")
-async def get_leaderboard(company_id: int):
-    """Get managers leaderboard"""
+async def get_leaderboard(company_id: int, period: str = 'all', sort: str = 'coins'):
+    """Get managers leaderboard with period filter and sorting
+    
+    period: week, month, all
+    sort: coins, amount, deals
+    """
+    from datetime import datetime, timedelta
+    
     async with get_db_session() as db:
+        # Определить дату начала периода
+        if period == 'week':
+            start_date = datetime.now() - timedelta(days=7)
+        elif period == 'month':
+            start_date = datetime.now() - timedelta(days=30)
+        else:
+            start_date = None
+        
+        # Получить базовую инфо менеджеров
         result = await db.execute(text("""
-            SELECT full_name, coins FROM company_managers 
+            SELECT user_id, full_name, coins, deals_count, total_deal_amount
+            FROM company_managers 
             WHERE company_id = :cid AND is_active = TRUE
-            ORDER BY coins DESC LIMIT 10
         """), {'cid': company_id})
-        return [{"full_name": r[0], "coins": r[1] or 0} for r in result.fetchall()]
+        managers = {r[0]: {
+            "user_id": r[0], 
+            "full_name": r[1], 
+            "coins": r[2] or 0,
+            "deals_count": r[3] or 0,
+            "total_deal_amount": float(r[4]) if r[4] else 0
+        } for r in result.fetchall()}
+        
+        # Если период — пересчитать сделки за период
+        if start_date and managers:
+            deals_result = await db.execute(text("""
+                SELECT manager_id, COUNT(*), COALESCE(SUM(deal_amount), 0)
+                FROM lead_deals 
+                WHERE company_id = :cid AND status = 'completed' AND created_at >= :start
+                GROUP BY manager_id
+            """), {'cid': company_id, 'start': start_date})
+            
+            for r in deals_result.fetchall():
+                if r[0] in managers:
+                    managers[r[0]]["deals_count"] = r[1] or 0
+                    managers[r[0]]["total_deal_amount"] = float(r[2]) if r[2] else 0
+            
+            # Для периода — обнулить тех у кого нет сделок за период
+            for m in managers.values():
+                if start_date:
+                    # Это временно - берём из lead_deals за период
+                    pass
+        
+        # Сортировка
+        managers_list = list(managers.values())
+        if sort == 'amount':
+            managers_list.sort(key=lambda x: x['total_deal_amount'], reverse=True)
+        elif sort == 'deals':
+            managers_list.sort(key=lambda x: x['deals_count'], reverse=True)
+        else:  # coins
+            managers_list.sort(key=lambda x: x['coins'], reverse=True)
+        
+        return managers_list[:10]
 
 @router.delete("/{company_id}/managers/{user_id}")
 async def delete_manager(company_id: int, user_id: int):

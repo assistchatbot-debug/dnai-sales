@@ -348,29 +348,97 @@ async def my_rating_handler(message: types.Message):
         async with aiohttp.ClientSession() as session:
             async with session.get(f'{API_BASE_URL}/crm/{company_id}/managers/{message.from_user.id}') as resp:
                 m = await resp.json() if resp.status == 200 else {}
-                await message.answer(f"📊 <b>Ваш рейтинг</b>\n\n💰 Монетки: {m.get('coins', 0)}\n📋 Лидов: {m.get('leads_count', 0)}\n✅ Сделок: {m.get('deals_count', 0)}", parse_mode='HTML')
+                amount = m.get('total_deal_amount', 0)
+                formatted_amount = f"{amount:,.0f}".replace(',', ' ')
+                text = f"📊 <b>Ваш рейтинг</b>\n\n"
+                text += f"💰 Монетки: {m.get('coins', 0)}\n"
+                text += f"📋 Лидов: {m.get('leads_count', 0)}\n"
+                text += f"✅ Сделок: {m.get('deals_count', 0)}\n"
+                text += f"💵 Сумма: {formatted_amount} ₸"
+                await message.answer(text, parse_mode='HTML')
     except:
         await message.answer("📊 💰 0")
 
 # === Лидерборд ===
 @crm_router.message(F.text == "🏆 Лидерборд")
 async def leaderboard_handler(message: types.Message):
-    company_id = message.bot.company_id
+    await show_leaderboard(message, period='all', sort='coins')
+
+async def show_leaderboard(message_or_callback, period='all', sort='coins'):
+    if isinstance(message_or_callback, types.CallbackQuery):
+        message = message_or_callback.message
+        company_id = message_or_callback.bot.company_id
+        is_callback = True
+    else:
+        message = message_or_callback
+        company_id = message.bot.company_id
+        is_callback = False
+    
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(f'{API_BASE_URL}/crm/{company_id}/leaderboard') as resp:
+            url = f'{API_BASE_URL}/crm/{company_id}/leaderboard?period={period}&sort={sort}'
+            async with session.get(url) as resp:
                 leaders = await resp.json() if resp.status == 200 else []
                 if not leaders:
-                    await message.answer("🏆 Пусто", parse_mode='HTML')
-                    return
-                text = "🏆 <b>Лидерборд</b>\n\n"
-                medals = ['🥇', '🥈', '🥉']
-                for i, m in enumerate(leaders[:10]):
-                    medal = medals[i] if i < 3 else f"{i+1}."
-                    text += f"{medal} {m.get('full_name', '?')} — {m.get('coins', 0)} 💰\n"
-                await message.answer(text, parse_mode='HTML')
-    except:
-        await message.answer("❌ Ошибка")
+                    text = "🏆 Пусто"
+                else:
+                    # Заголовок с текущим фильтром
+                    period_name = {'week': 'Неделя', 'month': 'Месяц', 'all': 'Всё время'}[period]
+                    sort_name = {'coins': '💰', 'amount': '💵', 'deals': '✅'}[sort]
+                    text = f"🏆 <b>Лидерборд</b> ({period_name}, {sort_name})\n\n"
+                    
+                    medals = ['🥇', '🥈', '🥉']
+                    for i, m in enumerate(leaders[:10]):
+                        medal = medals[i] if i < 3 else f"{i+1}."
+                        name = m.get('full_name', '?')
+                        coins = m.get('coins', 0)
+                        deals = m.get('deals_count', 0)
+                        amount = m.get('total_deal_amount', 0)
+                        formatted = f"{amount:,.0f}".replace(',', ' ')
+                        
+                        text += f"{medal} {name}\n"
+                        if sort == 'coins':
+                            text += f"   💰 Монеты: {coins}\n\n"
+                        elif sort == 'amount':
+                            text += f"   💵 Деньги: {formatted}₸\n\n"
+                        elif sort == 'deals':
+                            text += f"   ✅ Сделки: {deals}\n\n"
+                        else:
+                            text += f"   💰 Монеты: {coins}\n   💵 Деньги: {formatted}₸\n   ✅ Сделки: {deals}\n\n"
+                
+                # Кнопки периода и сортировки
+                kb = InlineKeyboardMarkup(inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text="📅 Неделя" + (" ✓" if period=='week' else ""), callback_data=f"lb:week:{sort}"),
+                        InlineKeyboardButton(text="📅 Месяц" + (" ✓" if period=='month' else ""), callback_data=f"lb:month:{sort}"),
+                        InlineKeyboardButton(text="📅 Всё" + (" ✓" if period=='all' else ""), callback_data=f"lb:all:{sort}")
+                    ],
+                    [
+                        InlineKeyboardButton(text="💰 Монеты" + (" ✓" if sort=='coins' else ""), callback_data=f"lb:{period}:coins"),
+                        InlineKeyboardButton(text="💵 Сумма" + (" ✓" if sort=='amount' else ""), callback_data=f"lb:{period}:amount"),
+                        InlineKeyboardButton(text="✅ Сделки" + (" ✓" if sort=='deals' else ""), callback_data=f"lb:{period}:deals")
+                    ]
+                ])
+                
+                if is_callback:
+                    await message.edit_text(text, parse_mode='HTML', reply_markup=kb)
+                else:
+                    await message.answer(text, parse_mode='HTML', reply_markup=kb)
+    except Exception as e:
+        logging.error(f"Leaderboard: {e}")
+        if is_callback:
+            await message_or_callback.answer("❌ Ошибка", show_alert=True)
+        else:
+            await message.answer("❌ Ошибка")
+
+# Callback для кнопок лидерборда
+@crm_router.callback_query(F.data.startswith("lb:"))
+async def leaderboard_callback(callback: types.CallbackQuery):
+    parts = callback.data.split(":")
+    period = parts[1]
+    sort = parts[2]
+    await show_leaderboard(callback, period=period, sort=sort)
+    await callback.answer()
 
 # === Просмотр лида ===
 @crm_router.callback_query(F.data.startswith("vld:"))

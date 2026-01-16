@@ -15,7 +15,7 @@ def get_admin_keyboard():
     from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="🏠 Меню"), KeyboardButton(text="📊 Статус")],
+            [KeyboardButton(text="🏆 Лидерборд"), KeyboardButton(text="📊 Статус")],
             [KeyboardButton(text="📢 Каналы"), KeyboardButton(text="🌐 Виджет")],
             [KeyboardButton(text="💳 Тарифы"), KeyboardButton(text="🌍 Язык")],
             [KeyboardButton(text="👥 Менеджеры"), KeyboardButton(text="📋 Лиды")],
@@ -385,6 +385,41 @@ async def process_admin_command(message: types.Message, text: str, state: FSMCon
         except Exception as e:
             logging.error(f"Managers error: {e}")
             await message.answer("📋 Менеджеры: 0\n\nЧтобы добавить: /join")
+
+    elif 'лидерборд' in text_lower:
+        company_id = getattr(message.bot, 'company_id', 1)
+        try:
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            async with aiohttp.ClientSession() as session:
+                url = f'{API_BASE_URL}/crm/{company_id}/leaderboard?period=all&sort=coins'
+                async with session.get(url) as resp:
+                    leaders = await resp.json() if resp.status == 200 else []
+                    if not leaders:
+                        await message.answer("🏆 Пусто")
+                        return
+                    text_msg = "🏆 <b>Лидерборд</b> (Всё время, 💰)\n\n"
+                    medals = ['🥇', '🥈', '🥉']
+                    for i, m in enumerate(leaders[:10]):
+                        medal = medals[i] if i < 3 else f"{i+1}."
+                        name = m.get('full_name', '?')
+                        coins = m.get('coins', 0)
+                        text_msg += f"{medal} {name}\n   💰 Монеты: {coins}\n\n"
+                    
+                    kb = InlineKeyboardMarkup(inline_keyboard=[
+                        [
+                            InlineKeyboardButton(text="📅 Неделя", callback_data="alb:week:coins"),
+                            InlineKeyboardButton(text="📅 Месяц", callback_data="alb:month:coins"),
+                            InlineKeyboardButton(text="📅 Всё ✓", callback_data="alb:all:coins")
+                        ],
+                        [
+                            InlineKeyboardButton(text="💰 Монеты ✓", callback_data="alb:all:coins"),
+                            InlineKeyboardButton(text="💵 Сумма", callback_data="alb:all:amount"),
+                            InlineKeyboardButton(text="✅ Сделки", callback_data="alb:all:deals")
+                        ]
+                    ])
+                    await message.answer(text_msg, parse_mode='HTML', reply_markup=kb)
+        except Exception as e:
+            await message.answer(f"❌ Ошибка: {str(e)[:50]}")
 
     elif 'статус' in text_lower or 'status' in text_lower:
         company_id = getattr(message.bot, 'company_id', 1)
