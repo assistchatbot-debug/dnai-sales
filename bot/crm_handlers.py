@@ -153,6 +153,8 @@ def format_lead_card(lead: dict, statuses: list = None) -> str:
 
 def get_lead_keyboard(lead_id: int, lead: dict, statuses: list) -> InlineKeyboardMarkup:
     buttons = []
+    # Кнопка диалога вверху
+    buttons.append([InlineKeyboardButton(text="📜 Смотреть Диалог", callback_data=f"dialog:{lead_id}")])
     contact = lead.get('contact_info', {}) or {}
     phone = contact.get('phone', '').replace('+', '').replace(' ', '').replace('-', '').replace('(', '').replace(')', '')
     tg_username = contact.get('telegram_username') or contact.get('username', '')
@@ -576,6 +578,44 @@ async def process_deal_amount(message: types.Message, state: FSMContext):
         await message.answer("❌ Ошибка")
     
     await state.clear()
+
+
+# === Смотреть Диалог ===
+@crm_router.callback_query(F.data.startswith("dialog:"))
+async def view_dialog_callback(callback: types.CallbackQuery):
+    lead_id = int(callback.data.split(":")[1])
+    company_id = callback.bot.company_id
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f'{API_BASE_URL}/crm/{company_id}/leads/{lead_id}/full_report') as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    
+                    text = f"📜 <b>Диалог с {data.get('name', 'клиентом')}</b>\n\n"
+                    
+                    if data.get('ai_summary'):
+                        text += f"🤖 <b>AI-анализ:</b>\n{data['ai_summary'][:2000]}\n\n"
+                    
+                    if data.get('conversation_history'):
+                        text += "💬 <b>История:</b>\n"
+                        for msg in data['conversation_history'][-15:]:
+                            sender_icon = "🧑" if msg.get('sender') == 'user' else "🤖"
+                            text += f"{sender_icon} {msg.get('text', '')[:150]}\n\n"
+                    
+                    kb = InlineKeyboardMarkup(inline_keyboard=[[
+                        InlineKeyboardButton(text="⬅️ Назад к карточке", callback_data=f"vld:{lead_id}")
+                    ]])
+                    
+                    if len(text) > 4000:
+                        text = text[:4000] + "..."
+                    await callback.message.edit_text(text, parse_mode='HTML', reply_markup=kb)
+                    await callback.answer()
+                else:
+                    await callback.answer("❌ Ошибка загрузки", show_alert=True)
+    except Exception as e:
+        logging.error(f"Dialog: {e}")
+        await callback.answer("❌ Ошибка", show_alert=True)
 
 # === Назад ===
 @crm_router.callback_query(F.data == "back_leads")
