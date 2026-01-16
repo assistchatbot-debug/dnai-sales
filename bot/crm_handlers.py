@@ -103,18 +103,27 @@ def format_lead_card(lead: dict, statuses: list = None) -> str:
     elif tg_user_id:
         card += f"\n<b>✈️ Telegram ID:</b> {tg_user_id}"
 
-    # AI анализ — показать температуру из contact_info
+    # AI анализ — Температура + раздел 3 (Интересы клиента)
     temp_display = contact.get('temperature', '')
-    if temp_display or ai_summary or conversation:
+    interests = ""
+    
+    # Извлечь раздел 3 из ai_summary
+    if ai_summary and "**3. Интересы клиента**" in ai_summary:
+        marker_start = "**3. Интересы клиента**"
+        idx_start = ai_summary.index(marker_start)
+        text_after = ai_summary[idx_start + len(marker_start):]
+        if "**4." in text_after:
+            idx_end = text_after.index("**4.")
+            interests = text_after[:idx_end].strip()
+        else:
+            interests = text_after.strip()[:600]
+    
+    if temp_display or interests:
         card += "\n\n<b>🤖 AI-анализ:</b>"
         if temp_display:
             card += f"\n{temp_display}"
-        elif temperature:
-            card += f"\nТемпература: {temperature}"
-        if ai_summary:
-            card += f"\n{ai_summary[:200]}"
-        elif conversation:
-            card += f"\n{conversation[:200]}"
+        if interests:
+            card += f"\n\n<b>Интересы:</b>\n{interests}"
 
     card += f"\n\n<b>📊 Статус:</b> {status_emoji} {status_name}"
     
