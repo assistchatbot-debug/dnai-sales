@@ -120,9 +120,10 @@ def format_lead_card(lead: dict, statuses: list = None) -> str:
             interests = text_after.strip()[:600]
     
     if temp_display or interests:
-        card += "\n\n<b>🤖 AI-анализ:</b>"
         if temp_display:
-            card += f"\n{temp_display}"
+            card += f"\n\n<b>🤖 AI-анализ:</b> {temp_display}"
+        else:
+            card += "\n\n<b>🤖 AI-анализ:</b>"
         if interests:
             card += f"\n\n<b>Интересы:</b>\n{interests}"
 
