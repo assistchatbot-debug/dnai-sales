@@ -164,7 +164,7 @@ def get_lead_keyboard(lead_id: int, lead: dict, statuses: list) -> InlineKeyboar
         buttons.append([InlineKeyboardButton(text="📞 Взять в работу", callback_data=f"take:{lead_id}")])
     else:
         # Статусы вертикально
-        for s in statuses[:5]:
+        for s in statuses[:7]:
             code = str(s.get('code', s.get('id', '')))
             emoji = s.get('emoji', '⚪')
             name = s.get('name', '')
