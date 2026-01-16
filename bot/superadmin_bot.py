@@ -45,6 +45,7 @@ class CompanyFlow(StatesGroup):
     editing_manager_chat_id = State()
     editing_ai_endpoint = State()
     editing_ai_api_key = State()
+    editing_currency = State()
     selecting_company_for_tier = State()
     selecting_tier = State()
     entering_tier_days = State()
@@ -272,7 +273,7 @@ async def btn_companies(message: types.Message, state: FSMContext):
 async def start_create_company(message: types.Message, state: FSMContext):
     await state.set_state(CompanyFlow.editing_name)
     await state.update_data(id=None)
-    await message.answer("📝 <b>Создание - Шаг 1/11: Название</b>\n\nВведите название:", parse_mode='HTML')
+    await message.answer("📝 <b>Создание - Шаг 1/12: Название</b>\n\nВведите название:", parse_mode='HTML')
 
 @dp.message(CompanyFlow.viewing_list, F.text == "✏️ Редактировать компанию")
 async def start_edit_company(message: types.Message, state: FSMContext):
@@ -329,42 +330,42 @@ async def process_name(message: types.Message, state: FSMContext):
     data = await state.get_data()
     if message.text != '.': await state.update_data(name=message.text)
     await state.set_state(CompanyFlow.editing_bin)
-    await message.answer(f"🔢 <b>Шаг 2/11: ИИН/БИН</b>\n\n<i>Текущее:</i> {data.get('bin_iin') or 'нет'}\n\nВведите или '.':", parse_mode='HTML')
+    await message.answer(f"🔢 <b>Шаг 2/12: ИИН/БИН</b>\n\n<i>Текущее:</i> {data.get('bin_iin') or 'нет'}\n\nВведите или '.':", parse_mode='HTML')
 
 @dp.message(CompanyFlow.editing_bin)
 async def process_bin(message: types.Message, state: FSMContext):
     data = await state.get_data()
     if message.text != '.': await state.update_data(bin_iin=message.text)
     await state.set_state(CompanyFlow.editing_phone)
-    await message.answer(f"📱 <b>Шаг 3/11: Телефон</b>\n\n<i>Текущий:</i> {data.get('phone') or 'нет'}\n\nВведите или '.':", parse_mode='HTML')
+    await message.answer(f"📱 <b>Шаг 3/12: Телефон</b>\n\n<i>Текущий:</i> {data.get('phone') or 'нет'}\n\nВведите или '.':", parse_mode='HTML')
 
 @dp.message(CompanyFlow.editing_phone)
 async def process_phone(message: types.Message, state: FSMContext):
     data = await state.get_data()
     if message.text != '.': await state.update_data(phone=message.text)
     await state.set_state(CompanyFlow.editing_whatsapp)
-    await message.answer(f"💬 <b>Шаг 4/11: WhatsApp</b>\n\n<i>Текущий:</i> {data.get('whatsapp') or 'нет'}\n\nВведите или '.':", parse_mode='HTML')
+    await message.answer(f"💬 <b>Шаг 4/12: WhatsApp</b>\n\n<i>Текущий:</i> {data.get('whatsapp') or 'нет'}\n\nВведите или '.':", parse_mode='HTML')
 
 @dp.message(CompanyFlow.editing_whatsapp)
 async def process_whatsapp(message: types.Message, state: FSMContext):
     data = await state.get_data()
     if message.text != '.': await state.update_data(whatsapp=message.text)
     await state.set_state(CompanyFlow.editing_email)
-    await message.answer(f"📧 <b>Шаг 5/11: Email</b>\n\n<i>Текущий:</i> {data.get('email') or 'нет'}\n\nВведите или '.':", parse_mode='HTML')
+    await message.answer(f"📧 <b>Шаг 5/12: Email</b>\n\n<i>Текущий:</i> {data.get('email') or 'нет'}\n\nВведите или '.':", parse_mode='HTML')
 
 @dp.message(CompanyFlow.editing_email)
 async def process_email(message: types.Message, state: FSMContext):
     data = await state.get_data()
     if message.text != '.': await state.update_data(email=message.text)
     await state.set_state(CompanyFlow.editing_description)
-    await message.answer(f"📄 <b>Шаг 6/11: Описание</b>\n\n<i>Текущее:</i> {(data.get('description') or 'нет')[:50]}...\n\nВведите или '.':", parse_mode='HTML')
+    await message.answer(f"📄 <b>Шаг 6/12: Описание</b>\n\n<i>Текущее:</i> {(data.get('description') or 'нет')[:50]}...\n\nВведите или '.':", parse_mode='HTML')
 
 @dp.message(CompanyFlow.editing_description)
 async def process_description(message: types.Message, state: FSMContext):
     data = await state.get_data()
     if message.text != '.': await state.update_data(description=message.text)
     await state.set_state(CompanyFlow.editing_logo)
-    await message.answer(f"📷 <b>Шаг 7/11: Логотип</b>\n\nОтправьте фото/документ или '.':", parse_mode='HTML')
+    await message.answer(f"📷 <b>Шаг 7/12: Логотип</b>\n\nОтправьте фото/документ или '.':", parse_mode='HTML')
 
 @dp.message(CompanyFlow.editing_logo)
 async def process_logo(message: types.Message, state: FSMContext):
@@ -390,14 +391,14 @@ async def process_logo(message: types.Message, state: FSMContext):
         except: pass
     await state.set_state(CompanyFlow.editing_bot_token)
     token = data.get('bot_token') or 'нет'
-    await message.answer(f"🤖 <b>Шаг 8/11: Bot Token</b>\n\n<i>Текущий:</i> {token[:20]}...\n\nВведите или '.':", parse_mode='HTML')
+    await message.answer(f"🤖 <b>Шаг 8/12: Bot Token</b>\n\n<i>Текущий:</i> {token[:20]}...\n\nВведите или '.':", parse_mode='HTML')
 
 @dp.message(CompanyFlow.editing_bot_token)
 async def process_bot_token(message: types.Message, state: FSMContext):
     data = await state.get_data()
     if message.text != '.': await state.update_data(bot_token=message.text)
     await state.set_state(CompanyFlow.editing_manager_chat_id)
-    await message.answer(f"👤 <b>Шаг 9/11: Manager Chat ID</b>\n\n<i>Текущий:</i> {data.get('manager_chat_id') or 'нет'}\n\nВведите или '.':", parse_mode='HTML')
+    await message.answer(f"👤 <b>Шаг 9/12: Manager Chat ID</b>\n\n<i>Текущий:</i> {data.get('manager_chat_id') or 'нет'}\n\nВведите или '.':", parse_mode='HTML')
 
 @dp.message(CompanyFlow.editing_manager_chat_id)
 async def process_manager_chat_id(message: types.Message, state: FSMContext):
@@ -408,7 +409,7 @@ async def process_manager_chat_id(message: types.Message, state: FSMContext):
             await message.answer("⚠️ Неверный формат")
             return
     await state.set_state(CompanyFlow.editing_ai_endpoint)
-    await message.answer(f"🤖 <b>Шаг 10/11: AI Endpoint</b>\n\n<i>Текущий:</i> {data.get('ai_endpoint') or 'нет'}\n\nВведите или '.':", parse_mode='HTML')
+    await message.answer(f"🤖 <b>Шаг 10/12: AI Endpoint</b>\n\n<i>Текущий:</i> {data.get('ai_endpoint') or 'нет'}\n\nВведите или '.':", parse_mode='HTML')
 
 @dp.message(CompanyFlow.editing_ai_endpoint)
 async def process_ai_endpoint(message: types.Message, state: FSMContext):
@@ -416,11 +417,23 @@ async def process_ai_endpoint(message: types.Message, state: FSMContext):
     if message.text != '.': await state.update_data(ai_endpoint=message.text)
     await state.set_state(CompanyFlow.editing_ai_api_key)
     api_key = data.get('ai_api_key') or 'нет'
-    await message.answer(f"🔑 <b>Шаг 11/11: AI API Key</b>\n\n<i>Текущий:</i> {api_key[:20]}...\n\nВведите или '.':", parse_mode='HTML')
+    await message.answer(f"🔑 <b>Шаг 11/12: AI API Key</b>\n\n<i>Текущий:</i> {api_key[:20]}...\n\nВведите или '.':", parse_mode='HTML')
 
 @dp.message(CompanyFlow.editing_ai_api_key)
 async def process_ai_api_key(message: types.Message, state: FSMContext):
     if message.text != '.': await state.update_data(ai_api_key=message.text)
+    data = await state.get_data()
+    await state.set_state(CompanyFlow.editing_currency)
+    curr = data.get('currency') or 'KZT'
+    await message.answer(f"💱 <b>Шаг 12/12: Валюта</b>\n\n<i>Текущая:</i> {curr}\n\nВыберите:\n• KZT\n• USD\n• RUB\n• EUR\n\nИли '.':", parse_mode='HTML')
+
+@dp.message(CompanyFlow.editing_currency)
+async def process_currency(message: types.Message, state: FSMContext):
+    valid = ['KZT', 'USD', 'RUB', 'EUR', '.']
+    if message.text.upper() not in valid:
+        await message.answer("⚠️ Выберите: KZT, USD, RUB или EUR")
+        return
+    if message.text != '.': await state.update_data(currency=message.text.upper())
     data = await state.get_data()
     async with aiohttp.ClientSession() as session:
         try:
