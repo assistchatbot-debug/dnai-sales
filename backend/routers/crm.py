@@ -172,9 +172,20 @@ async def update_lead_status(company_id: int, lead_id: int, data: dict = Body(..
         current_order = current_data['sort']
         new_order = new_data['sort']
         
-        # 4. Проверка на перепрыгивание (разница > 1)
-        # Отказ (24) можно нажать в любой момент
-        if abs(new_order - current_order) > 1 and int(new_status) != 24:
+        # 4. Проверка на переходы между статусами
+        new_status_int = int(new_status)
+        current_status_int = int(current_status)
+        
+        # Отказ (24) — можно нажать в любой момент
+        if new_status_int == 24:
+            pass  # Всегда разрешён
+        # Повторная сделка (28) — только из Завершён (20)
+        elif new_status_int == 28 or current_status_int == 20:
+            if current_status_int != 20 and new_status_int != 8:
+                # Из Завершён можно только в Повторную (→В работе) или Отказ
+                pass
+        # Обычные статусы — только последовательно (разница ≤ 1)
+        elif abs(new_order - current_order) > 1:
             return {"status": "error", "message": "Нельзя перепрыгивать статусы"}
         
         # 5. Определить изменение монет
