@@ -133,40 +133,73 @@ async def assign_lead(company_id: int, lead_id: int, data: dict = Body(...)):
 
 @router.patch("/{company_id}/leads/{lead_id}/status")
 async def update_lead_status(company_id: int, lead_id: int, data: dict = Body(...)):
-    """Update lead status and award coins"""
+    """Update lead status and award coins (with protection)"""
     new_status = data.get('status')
     manager_id = data.get('manager_id')
     
     # "Повторная сделка" (28) → сбросить на "В работе" (8)
     if str(new_status) == '28':
-        new_status = '8'  # В работе
+        new_status = '8'
     
     async with get_db_session() as db:
-        # Get status info
-        status_result = await db.execute(text("""
-            SELECT id, emoji, name, coins FROM lead_status_settings 
-            WHERE company_id = :cid AND id = :sid
-        """), {'cid': company_id, 'sid': int(new_status) if str(new_status).isdigit() else 1})
-        status_row = status_result.fetchone()
+        # 1. Получить ТЕКУЩИЙ статус лида
+        current_result = await db.execute(text("""
+            SELECT status FROM leads WHERE id = :lid AND company_id = :cid
+        """), {'lid': lead_id, 'cid': company_id})
+        current_status = current_result.scalar() or '4'
         
-        if status_row:
-            status_id, emoji, name, coins = status_row
+        # 2. Тот же статус — игнорировать
+        if str(new_status) == str(current_status):
+            return {"status": "same", "message": "Статус не изменился"}
+        
+        # 3. Преобразовать текстовые статусы в числа
+        status_map = {'new': 4, 'in_progress': 8, 'negotiation': 12, 'awaiting_payment': 16, 'completed': 20, 'rejected': 24}
+        if not str(current_status).isdigit():
+            current_status = status_map.get(current_status, 4)
+        if not str(new_status).isdigit():
+            new_status = status_map.get(new_status, 4)
+        
+        # Получить sort_order и coins для обоих статусов
+        orders_result = await db.execute(text("""
+            SELECT id, sort_order, coins, emoji, name FROM lead_status_settings 
+            WHERE company_id = :cid AND id IN (:current, :new)
+        """), {'cid': company_id, 'current': int(current_status), 'new': int(new_status)})
+        orders = {r[0]: {'sort': r[1], 'coins': r[2], 'emoji': r[3], 'name': r[4]} for r in orders_result.fetchall()}
+        
+        current_data = orders.get(int(current_status), {'sort': 0, 'coins': 0})
+        new_data = orders.get(int(new_status), {'sort': 0, 'coins': 0, 'emoji': '🆕', 'name': 'Новый'})
+        
+        current_order = current_data['sort']
+        new_order = new_data['sort']
+        
+        # 4. Проверка на перепрыгивание (разница > 1)
+        # Отказ (24) можно нажать в любой момент
+        if abs(new_order - current_order) > 1 and int(new_status) != 24:
+            return {"status": "error", "message": "Нельзя перепрыгивать статусы"}
+        
+        # 5. Определить изменение монет
+        if new_order > current_order:
+            coins_change = new_data['coins']  # Вперёд: +coins нового
         else:
-            emoji, name, coins = '🆕', 'Новый', 0
+            coins_change = -current_data['coins']  # Назад: -coins текущего
         
-        # Update lead
+        emoji = new_data.get('emoji', '🆕')
+        name = new_data.get('name', 'Новый')
+        status_id = int(new_status)
+        
+        # 6. Update lead
         await db.execute(text("""
             UPDATE leads SET status = :status, status_emoji = :emoji, status_name = :name,
                    status_changed_at = NOW()
             WHERE id = :lid AND company_id = :cid
         """), {'status': new_status, 'emoji': emoji, 'name': name, 'lid': lead_id, 'cid': company_id})
         
-        # Award coins
-        if coins and manager_id:
+        # 7. Award/deduct coins
+        if coins_change and manager_id:
             await db.execute(text("""
                 UPDATE company_managers SET coins = coins + :coins 
                 WHERE company_id = :cid AND user_id = :uid
-            """), {'coins': coins, 'cid': company_id, 'uid': manager_id})
+            """), {'coins': coins_change, 'cid': company_id, 'uid': manager_id})
         
         await db.commit()
         
@@ -208,13 +241,13 @@ async def update_lead_status(company_id: int, lead_id: int, data: dict = Body(..
             return {
                 "status": "ok", 
                 "status_name": name, 
-                "coins_earned": coins or 0,
+                "coins_earned": coins_change or 0,
                 "requires_amount": True,
                 "deal_id": deal_id,
                 "currency": currency
             }
         
-        return {"status": "ok", "status_name": name, "coins_earned": coins or 0}
+        return {"status": "ok", "status_name": name, "coins_earned": coins_change or 0}
 
 
 
