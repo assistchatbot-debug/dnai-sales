@@ -135,6 +135,7 @@ async def assign_lead(company_id: int, lead_id: int, data: dict = Body(...)):
 async def update_lead_status(company_id: int, lead_id: int, data: dict = Body(...)):
     """Update lead status and award coins (with protection)"""
     new_status = data.get('status')
+    original_new_status = str(new_status)  # Запомнить до сброса
     manager_id = data.get('manager_id')
     
     # "Повторная сделка" (28) → сбросить на "В работе" (8)
@@ -173,23 +174,37 @@ async def update_lead_status(company_id: int, lead_id: int, data: dict = Body(..
         new_order = new_data['sort']
         
         # 4. Проверка на переходы между статусами
-        new_status_int = int(new_status)
+        # Используем original_new_status для проверки (до сброса 28→8)
+        new_status_int = int(original_new_status) if original_new_status.isdigit() else int(new_status)
         current_status_int = int(current_status)
         
         # Отказ (24) — можно нажать в любой момент
         if new_status_int == 24:
             pass  # Всегда разрешён
-        # Повторная сделка (28) — только из Завершён (20)
-        elif new_status_int == 28 or current_status_int == 20:
-            if current_status_int != 20 and new_status_int != 8:
-                # Из Завершён можно только в Повторную (→В работе) или Отказ
-                pass
+        # Повторная сделка (28) — разрешена из Завершён (20) или Отказ (24)
+        elif new_status_int == 28:
+            if current_status_int not in [20, 24]:
+                return {"status": "error", "message": "Повторная сделка только после Завершён или Отказ"}
+        # Из Завершён (20) можно только в Отказ или Повторную
+        elif current_status_int == 20:
+            if new_status_int not in [24, 28]:
+                return {"status": "error", "message": "Из Завершён только Отказ или Повторная"}
+        # Из Отказа (24) можно только в Повторную
+        elif current_status_int == 24:
+            if new_status_int != 28:
+                return {"status": "error", "message": "Из Отказа только Повторная сделка"}
         # Обычные статусы — только последовательно (разница ≤ 1)
         elif abs(new_order - current_order) > 1:
             return {"status": "error", "message": "Нельзя перепрыгивать статусы"}
         
         # 5. Определить изменение монет
-        if new_order > current_order:
+        # Повторная сделка — брать coins из статуса 28
+        if original_new_status == '28':
+            repeat_result = await db.execute(text("""
+                SELECT coins FROM lead_status_settings WHERE company_id = :cid AND id = 28
+            """), {'cid': company_id})
+            coins_change = repeat_result.scalar() or 0
+        elif new_order > current_order:
             coins_change = new_data['coins']  # Вперёд: +coins нового
         else:
             coins_change = -current_data['coins']  # Назад: -coins текущего
