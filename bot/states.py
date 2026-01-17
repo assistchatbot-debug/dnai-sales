@@ -17,3 +17,4 @@ class ManagerFlow(StatesGroup):
     editing_widget_domain = State()
     editing_social_greeting = State()
     editing_social_name = State()
+    editing_status_coins = State()

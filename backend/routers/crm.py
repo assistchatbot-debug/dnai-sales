@@ -432,6 +432,23 @@ async def get_leaderboard(company_id: int, period: str = 'all', sort: str = 'coi
         
         return managers_list[:10]
 
+
+@router.patch("/{company_id}/statuses/{status_id}")
+async def update_status_coins(company_id: int, status_id: int, data: dict):
+    """Update coins for a status"""
+    coins = data.get('coins')
+    if coins is None:
+        return {"error": "coins required"}
+    
+    async with get_db_session() as db:
+        await db.execute(text("""
+            UPDATE lead_status_settings 
+            SET coins = :coins 
+            WHERE id = :sid AND company_id = :cid
+        """), {'coins': coins, 'sid': status_id, 'cid': company_id})
+        await db.commit()
+        return {"status": "ok", "coins": coins}
+
 @router.delete("/{company_id}/managers/{user_id}")
 async def delete_manager(company_id: int, user_id: int):
     """Delete manager for re-registration"""

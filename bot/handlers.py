@@ -1307,6 +1307,69 @@ async def toggle_crm_integration_callback(callback: types.CallbackQuery):
         logging.error(f"Toggle CRM integration error: {e}")
         await callback.answer("❌ Ошибка", show_alert=True)
 
+
+@router.message(ManagerFlow.editing_status_coins)
+async def process_status_coins_input(message: types.Message, state: FSMContext):
+    """Process new coins value"""
+    try:
+        coins = int(message.text.strip())
+    except ValueError:
+        await message.answer("❌ Введите число (например: 50 или -10)")
+        return
+    
+    data = await state.get_data()
+    status_id = data.get('editing_status_code')
+    company_id = data.get('editing_company_id')
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.patch(
+                f'{API_BASE_URL}/crm/{company_id}/statuses/{status_id}',
+                json={'coins': coins}
+            ) as resp:
+                if resp.status == 200:
+                    await message.answer(
+                        f"✅ Монетки обновлены: {coins} 💰",
+                        reply_markup=get_admin_keyboard()
+                    )
+                else:
+                    await message.answer("❌ Ошибка обновления")
+    except Exception as e:
+        logging.error(f"Update coins: {e}")
+        await message.answer("❌ Ошибка сохранения")
+    
+    await state.clear()
+
+
+@router.callback_query(F.data.startswith("status_edit:"))
+async def edit_status_coins(callback: types.CallbackQuery, state: FSMContext):
+    """Start editing status coins"""
+    status_code = callback.data.split(":")[1]
+    company_id = getattr(callback.bot, 'company_id', 1)
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f'{API_BASE_URL}/crm/{company_id}/statuses') as resp:
+                if resp.status == 200:
+                    statuses = await resp.json()
+                    status = next((s for s in statuses if str(s.get('id', s.get('code'))) == status_code), None)
+                    if status:
+                        await state.update_data(
+                            editing_status_code=status_code, 
+                            editing_company_id=company_id
+                        )
+                        await state.set_state(ManagerFlow.editing_status_coins)
+                        await callback.message.edit_text(
+                            f"Введите новое количество монеток для статуса "
+                            f"\"{status['emoji']} {status['name']}\":\n\n"
+                            f"Текущее значение: {status['coins']} 💰"
+                        )
+                        await callback.answer()
+                        return
+    except Exception as e:
+        logging.error(f"Edit status: {e}")
+    await callback.answer("❌ Ошибка")
+
 @router.message()
 async def handle_text(message: types.Message, state: FSMContext):
     if message.text.startswith('/'):
@@ -1946,15 +2009,32 @@ async def handle_internal_crm(callback: types.CallbackQuery):
                 async with session.get(f'{API_BASE_URL}/crm/{company_id}/statuses') as resp:
                     if resp.status == 200:
                         statuses = await resp.json()
-                        text = "⚙️ <b>Статусы лидов</b>\n\n"
+                        text = "⚙️ <b>Настройки монеток статусов</b>\n\n"
                         for s in statuses:
                             coins = f"+{s['coins']}" if s['coins'] > 0 else str(s['coins'])
-                            time_str = f"{s['max_time_minutes']}м" if s['max_time_minutes'] else "∞"
-                            text += f"{s['emoji']} {s['name']} — {coins}💰, {time_str}\n"
-                        await callback.message.edit_text(text, parse_mode='HTML')
+                            text += f"{s['emoji']} {s['name']}: {coins} 💰\n"
+                        text += "\n<i>Нажмите для редактирования:</i>"
+                        
+                        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                        buttons = []
+                        row = []
+                        for s in statuses:
+                            row.append(InlineKeyboardButton(
+                                text=f"{s['emoji']} ({s['coins']})",
+                                callback_data=f"status_edit:{s.get('id', s.get('code'))}"
+                            ))
+                            if len(row) == 3:
+                                buttons.append(row)
+                                row = []
+                        if row:
+                            buttons.append(row)
+                        buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="crm_int:back")])
+                        kb = InlineKeyboardMarkup(inline_keyboard=buttons)
+                        await callback.message.edit_text(text, parse_mode='HTML', reply_markup=kb)
                     else:
                         await callback.answer("❌ Ошибка загрузки")
-        except:
+        except Exception as e:
+            logging.error(f"Statuses: {e}")
             await callback.answer("❌ Ошибка")
     
     elif action == "coins":
