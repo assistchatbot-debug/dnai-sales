@@ -1,6 +1,8 @@
 """CRM Handlers - Manager Lead Cards - v5 FINAL"""
 from states import EventStates
+from calendar_kb import get_calendar, get_hour_picker, get_minute_picker
 from states import EventStates
+from calendar_kb import get_calendar, get_hour_picker, get_minute_picker
 import logging
 import aiohttp
 from aiogram import Router, types, F
@@ -852,39 +854,114 @@ async def start_create_event(callback: types.CallbackQuery, state: FSMContext):
 
 @crm_router.callback_query(F.data.startswith("etype:"))
 async def select_event_type(callback: types.CallbackQuery, state: FSMContext):
-    """Event type selected"""
+    """Event type selected - show calendar"""
     event_type = callback.data.split(":")[1]
     await state.update_data(event_type=event_type)
-    await callback.message.edit_text("📅 Введите дату и время (ДД.ММ.ГГГГ ЧЧ:ММ):\nНапример: 19.01.2026 10:00")
-    await state.set_state(EventStates.entering_datetime)
+    kb = get_calendar()
+    await callback.message.edit_text("📅 Выберите дату:", reply_markup=kb)
+    await state.set_state(EventStates.selecting_date)
 
 
-@crm_router.message(EventStates.entering_datetime)
-async def process_event_datetime(message: types.Message, state: FSMContext):
-    """Process event datetime input"""
-    from datetime import datetime
-    try:
-        # Поддержка 10.00 и 10:00
-        text = message.text.strip().replace('.', ':', 2)  # Первые 2 точки оставить, третью заменить
-        # Формат: ДД.ММ.ГГГГ ЧЧ:ММ или ДД.ММ.ГГГГ ЧЧ.ММ
-        parts = message.text.strip().split(' ')
-        if len(parts) == 2:
-            date_part = parts[0]  # ДД.ММ.ГГГГ
-            time_part = parts[1].replace('.', ':')  # 10.00 → 10:00
-            text = date_part + ' ' + time_part
-        else:
-            text = message.text.strip()
-        dt = datetime.strptime(text, "%d.%m.%Y %H:%M")
-        if dt < datetime.now():
-            await message.answer("❌ Дата должна быть в будущем")
-            return
-    except ValueError:
-        await message.answer("❌ Неверный формат. Используйте: ДД.ММ.ГГГГ ЧЧ:ММ")
-        return
+@crm_router.callback_query(F.data == "cal_ignore")
+async def calendar_ignore(callback: types.CallbackQuery):
+    """Ignore non-clickable calendar buttons"""
+    await callback.answer()
+
+
+@crm_router.callback_query(F.data.startswith("cal_m:"))
+async def calendar_nav_month(callback: types.CallbackQuery):
+    """Navigate calendar by month"""
+    _, year, month = callback.data.split(":")
+    kb = get_calendar(int(year), int(month))
+    await callback.message.edit_reply_markup(reply_markup=kb)
+
+
+@crm_router.callback_query(F.data.startswith("cal_y:"))
+async def calendar_nav_year(callback: types.CallbackQuery):
+    """Navigate calendar by year"""
+    _, year, month = callback.data.split(":")
+    kb = get_calendar(int(year), int(month))
+    await callback.message.edit_reply_markup(reply_markup=kb)
+
+
+@crm_router.callback_query(F.data.startswith("cal_day:"))
+async def calendar_day_selected(callback: types.CallbackQuery, state: FSMContext):
+    """Day selected - show hour picker"""
+    date_str = callback.data.split(":")[1]  # 2026-01-19
+    await state.update_data(selected_date=date_str)
+    kb = get_hour_picker(10)
+    await callback.message.edit_text("⏰ Выберите час:", reply_markup=kb)
+    await state.set_state(EventStates.selecting_hour)
+
+
+@crm_router.callback_query(F.data.startswith("cal_h:"))
+async def hour_scroll(callback: types.CallbackQuery):
+    """Scroll hours"""
+    hour = int(callback.data.split(":")[1])
+    kb = get_hour_picker(hour)
+    await callback.message.edit_reply_markup(reply_markup=kb)
+
+
+@crm_router.callback_query(F.data.startswith("cal_hok:"))
+async def hour_confirmed(callback: types.CallbackQuery, state: FSMContext):
+    """Hour confirmed - show minute picker"""
+    hour = int(callback.data.split(":")[1])
+    await state.update_data(selected_hour=hour)
+    kb = get_minute_picker(0)
+    await callback.message.edit_text("⏰ Выберите минуты:", reply_markup=kb)
+    await state.set_state(EventStates.selecting_minute)
+
+
+@crm_router.callback_query(F.data.startswith("cal_min:"))
+async def minute_scroll(callback: types.CallbackQuery):
+    """Scroll minutes"""
+    minute = int(callback.data.split(":")[1])
+    kb = get_minute_picker(minute)
+    await callback.message.edit_reply_markup(reply_markup=kb)
+
+
+@crm_router.callback_query(F.data.startswith("cal_minok:"))
+async def minute_confirmed(callback: types.CallbackQuery, state: FSMContext):
+    """Minute confirmed - show description options"""
+    minute = int(callback.data.split(":")[1])
+    data = await state.get_data()
+    scheduled_at = f"{data['selected_date']}T{data['selected_hour']:02d}:{minute:02d}:00"
+    await state.update_data(scheduled_at=scheduled_at, selected_minute=minute)
     
-    await state.update_data(scheduled_at=dt.isoformat())
-    await message.answer("📝 Введите описание (или '.' чтобы пропустить):")
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📝 Добавить описание", callback_data="edesc:add")],
+        [InlineKeyboardButton(text="⏭ Пропустить", callback_data="edesc:skip")]
+    ])
+    await callback.message.edit_text("📝 Описание события:", reply_markup=kb)
     await state.set_state(EventStates.entering_description)
+
+
+@crm_router.callback_query(F.data == "edesc:skip")
+async def skip_description(callback: types.CallbackQuery, state: FSMContext):
+    """Skip description - show reminder options"""
+    await state.update_data(event_description='')
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="15 мин", callback_data="eremind:15"),
+            InlineKeyboardButton(text="30 мин", callback_data="eremind:30"),
+        ],
+        [
+            InlineKeyboardButton(text="45 мин", callback_data="eremind:45"),
+            InlineKeyboardButton(text="60 мин", callback_data="eremind:60"),
+        ]
+    ])
+    await callback.message.edit_text("⏰ Напомнить за:", reply_markup=kb)
+    await state.set_state(EventStates.selecting_reminder)
+
+
+@crm_router.callback_query(F.data == "edesc:add")
+async def add_description(callback: types.CallbackQuery, state: FSMContext):
+    """User wants to add description"""
+    await callback.message.edit_text("📝 Введите описание:")
+    await state.set_state(EventStates.entering_description)
+
+
+# Old datetime handler removed - using calendar now
 
 
 @crm_router.message(EventStates.entering_description)
@@ -932,7 +1009,7 @@ async def save_event(callback: types.CallbackQuery, state: FSMContext):
                     await callback.message.edit_text(
                         f"✅ Событие создано!\n\n"
                         f"{event_type}\n"
-                        f"📅 {data['scheduled_at'][:16].replace('T', ' ')}\n"
+                        f"📅 {data.get('selected_date', '')[8:10]}.{data.get('selected_date', '')[5:7]}.{data.get('selected_date', '')[:4]} {data.get('selected_hour', 0):02d}:{data.get('selected_minute', 0):02d}\n"
                         f"⏰ Напоминание за {remind} мин"
                     )
                 else:

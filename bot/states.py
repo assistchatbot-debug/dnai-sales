@@ -21,6 +21,8 @@ class ManagerFlow(StatesGroup):
 
 class EventStates(StatesGroup):
     selecting_type = State()
-    entering_datetime = State()
+    selecting_date = State()       # Календарь
+    selecting_hour = State()       # Часы
+    selecting_minute = State()     # Минуты
     entering_description = State()
     selecting_reminder = State()
