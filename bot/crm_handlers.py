@@ -889,17 +889,25 @@ async def calendar_day_selected(callback: types.CallbackQuery, state: FSMContext
     """Day selected - show hour picker"""
     date_str = callback.data.split(":")[1]  # 2026-01-19
     await state.update_data(selected_date=date_str)
+    data = await state.get_data()
+    event_type = EVENT_TYPES.get(data.get('event_type', ''), '📋 Событие')
+    # Формат: 19.01.2026
+    formatted_date = f"{date_str[8:10]}.{date_str[5:7]}.{date_str[:4]}"
     kb = get_hour_picker(10)
-    await callback.message.edit_text("⏰ Выберите час:", reply_markup=kb)
+    await callback.message.edit_text(f"{event_type}: {formatted_date}\n\n⏰ Выберите час:", reply_markup=kb)
     await state.set_state(EventStates.selecting_hour)
 
 
 @crm_router.callback_query(F.data.startswith("cal_h:"))
-async def hour_scroll(callback: types.CallbackQuery):
+async def hour_scroll(callback: types.CallbackQuery, state: FSMContext):
     """Scroll hours"""
     hour = int(callback.data.split(":")[1])
+    data = await state.get_data()
+    event_type = EVENT_TYPES.get(data.get('event_type', ''), '📋 Событие')
+    date_str = data.get('selected_date', '')
+    formatted_date = f"{date_str[8:10]}.{date_str[5:7]}.{date_str[:4]}" if date_str else ''
     kb = get_hour_picker(hour)
-    await callback.message.edit_reply_markup(reply_markup=kb)
+    await callback.message.edit_text(f"{event_type}: {formatted_date}\n\n⏰ Выберите час:", reply_markup=kb)
 
 
 @crm_router.callback_query(F.data.startswith("cal_hok:"))
@@ -907,17 +915,26 @@ async def hour_confirmed(callback: types.CallbackQuery, state: FSMContext):
     """Hour confirmed - show minute picker"""
     hour = int(callback.data.split(":")[1])
     await state.update_data(selected_hour=hour)
+    data = await state.get_data()
+    event_type = EVENT_TYPES.get(data.get('event_type', ''), '📋 Событие')
+    date_str = data.get('selected_date', '')
+    formatted_date = f"{date_str[8:10]}.{date_str[5:7]}.{date_str[:4]}" if date_str else ''
     kb = get_minute_picker(0)
-    await callback.message.edit_text("⏰ Выберите минуты:", reply_markup=kb)
+    await callback.message.edit_text(f"{event_type}: {formatted_date} в {hour:02d}:__\n\n⏰ Выберите минуты:", reply_markup=kb)
     await state.set_state(EventStates.selecting_minute)
 
 
 @crm_router.callback_query(F.data.startswith("cal_min:"))
-async def minute_scroll(callback: types.CallbackQuery):
+async def minute_scroll(callback: types.CallbackQuery, state: FSMContext):
     """Scroll minutes"""
     minute = int(callback.data.split(":")[1])
+    data = await state.get_data()
+    event_type = EVENT_TYPES.get(data.get('event_type', ''), '📋 Событие')
+    date_str = data.get('selected_date', '')
+    formatted_date = f"{date_str[8:10]}.{date_str[5:7]}.{date_str[:4]}" if date_str else ''
+    hour = data.get('selected_hour', 0)
     kb = get_minute_picker(minute)
-    await callback.message.edit_reply_markup(reply_markup=kb)
+    await callback.message.edit_text(f"{event_type}: {formatted_date} в {hour:02d}:__\n\n⏰ Выберите минуты:", reply_markup=kb)
 
 
 @crm_router.callback_query(F.data.startswith("cal_minok:"))
@@ -928,11 +945,16 @@ async def minute_confirmed(callback: types.CallbackQuery, state: FSMContext):
     scheduled_at = f"{data['selected_date']}T{data['selected_hour']:02d}:{minute:02d}:00"
     await state.update_data(scheduled_at=scheduled_at, selected_minute=minute)
     
+    event_type = EVENT_TYPES.get(data.get('event_type', ''), '📋 Событие')
+    date_str = data.get('selected_date', '')
+    formatted_date = f"{date_str[8:10]}.{date_str[5:7]}.{date_str[:4]}" if date_str else ''
+    hour = data.get('selected_hour', 0)
+    
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📝 Добавить описание", callback_data="edesc:add")],
         [InlineKeyboardButton(text="⏭ Пропустить", callback_data="edesc:skip")]
     ])
-    await callback.message.edit_text("📝 Описание события:", reply_markup=kb)
+    await callback.message.edit_text(f"{event_type}: {formatted_date} в {hour:02d}:{minute:02d}\n\n📝 Описание:", reply_markup=kb)
     await state.set_state(EventStates.entering_description)
 
 
@@ -940,6 +962,13 @@ async def minute_confirmed(callback: types.CallbackQuery, state: FSMContext):
 async def skip_description(callback: types.CallbackQuery, state: FSMContext):
     """Skip description - show reminder options"""
     await state.update_data(event_description='')
+    data = await state.get_data()
+    event_type = EVENT_TYPES.get(data.get('event_type', ''), '📋 Событие')
+    date_str = data.get('selected_date', '')
+    formatted_date = f"{date_str[8:10]}.{date_str[5:7]}.{date_str[:4]}" if date_str else ''
+    hour = data.get('selected_hour', 0)
+    minute = data.get('selected_minute', 0)
+    
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="15 мин", callback_data="eremind:15"),
@@ -950,7 +979,7 @@ async def skip_description(callback: types.CallbackQuery, state: FSMContext):
             InlineKeyboardButton(text="60 мин", callback_data="eremind:60"),
         ]
     ])
-    await callback.message.edit_text("⏰ Напомнить за:", reply_markup=kb)
+    await callback.message.edit_text(f"{event_type}: {formatted_date} в {hour:02d}:{minute:02d}\n\n⏰ Напомнить за:", reply_markup=kb)
     await state.set_state(EventStates.selecting_reminder)
 
 
