@@ -14,6 +14,8 @@ class CRMStates(StatesGroup):
     entering_note = State()
     join_firstname = State()
     waiting_for_deal_amount = State()
+    waiting_for_doc_number = State()
+    waiting_for_payment_date = State()
     join_lastname = State()
     join_phone = State()
 
@@ -140,7 +142,13 @@ def format_lead_card(lead: dict, statuses: list = None) -> str:
             formatted = f"{amount:,.0f}".replace(',', ' ')
             # Показать ✅ если подтверждена + дата, иначе ⬜
             if d.get('confirmed'):
-                date_str = d.get('confirmed_at', '')[:10] if d.get('confirmed_at') else ''
+                # Показывать payment_date в формате ДД.ММ.ГГГГ
+                raw_date = d.get('payment_date') or d.get('confirmed_at', '')
+                if raw_date and len(str(raw_date)) >= 10:
+                    parts = str(raw_date)[:10].split('-')
+                    date_str = f"{parts[2]}.{parts[1]}.{parts[0]}" if len(parts) == 3 else ''
+                else:
+                    date_str = ''
                 card += f"\n💰 Сделка {i}: {formatted} {currency} ✅ — {date_str}"
             else:
                 card += f"\n💰 Сделка {i}: {formatted} {currency} ⬜"
@@ -649,10 +657,16 @@ async def process_deal_amount(message: types.Message, state: FSMContext):
                     result = await resp.json()
                     deal_num = result.get('deal_number', 1)
                     formatted = f"{amount:,.0f}".replace(',', ' ')
-                    await message.answer(f"✅ Сделка {deal_num}: {formatted} {currency}")
+                    await message.answer(f"✅ Сумма: {formatted} {currency}")
                     
-                    # Отправить уведомление админу для подтверждения
-                    if result.get('notify_admin'):
+                    # Сохранить данные и запросить номер документа
+                    await state.update_data(deal_amount=amount, deal_number=deal_num, deal_result=result)
+                    await message.answer("📄 Введите номер документа оплаты:")
+                    await state.set_state(CRMStates.waiting_for_doc_number)
+                    return
+                    
+                    # (уведомление админу перенесено в waiting_for_payment_date)
+                    if False and result.get('notify_admin'):
                         try:
                             admin_id = message.bot.admin_chat_id
                             deal_id = result.get('deal_id')
@@ -682,6 +696,86 @@ async def process_deal_amount(message: types.Message, state: FSMContext):
     
     await state.clear()
 
+
+
+
+@crm_router.message(CRMStates.waiting_for_doc_number)
+async def process_doc_number(message: types.Message, state: FSMContext):
+    """Process document number input"""
+    doc_number = message.text.strip()
+    if not doc_number:
+        await message.answer("❌ Введите номер документа")
+        return
+    
+    await state.update_data(payment_doc_number=doc_number)
+    await message.answer("📅 Введите дату оплаты (ДД.ММ.ГГГГ):")
+    await state.set_state(CRMStates.waiting_for_payment_date)
+
+
+@crm_router.message(CRMStates.waiting_for_payment_date)
+async def process_payment_date(message: types.Message, state: FSMContext):
+    """Process payment date input"""
+    date_str = message.text.strip()
+    
+    # Валидация формата ДД.ММ.ГГГГ
+    try:
+        from datetime import datetime
+        payment_date = datetime.strptime(date_str, "%d.%m.%Y").date()
+        payment_date_db = payment_date.strftime("%Y-%m-%d")  # Для БД
+    except ValueError:
+        await message.answer("❌ Неверный формат. Используйте ДД.ММ.ГГГГ (например: 18.01.2026)")
+        return
+    
+    data = await state.get_data()
+    company_id = message.bot.company_id
+    deal_id = data.get('deal_id')
+    doc_number = data.get('payment_doc_number', '')
+    deal_result = data.get('deal_result', {})
+    deal_num = data.get('deal_number', 1)
+    deal_amount = data.get('deal_amount', 0)
+    currency = data.get('deal_currency', 'KZT')
+    
+    # Сохранить документ и дату в БД
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.patch(
+                f'{API_BASE_URL}/crm/{company_id}/deals/{deal_id}/document',
+                json={'payment_doc_number': doc_number, 'payment_date': payment_date_db}
+            ) as resp:
+                if resp.status == 200:
+                    formatted = f"{deal_amount:,.0f}".replace(',', ' ')
+                    await message.answer(f"✅ Сделка {deal_num}: {formatted} {currency}\n📄 Документ: {doc_number}\n📅 Дата: {date_str}")
+                    
+                    # Отправить уведомление админу
+                    try:
+                        admin_id = message.bot.admin_chat_id
+                        client = deal_result.get('client_name', 'Клиент')
+                        mgr = deal_result.get('manager_name', 'Менеджер')
+                        lead_id = deal_result.get('lead_id', 0)
+                        
+                        notify_text = (
+                            f"💰 <b>Новая сделка!</b>\n\n"
+                            f"Лид #{lead_id}\n"
+                            f"👤 Клиент: {client}\n"
+                            f"👨‍💼 Менеджер: {mgr}\n"
+                            f"💵 Сумма: {formatted} {currency}\n"
+                            f"📄 Документ: {doc_number}\n"
+                            f"📅 Дата оплаты: {date_str}"
+                        )
+                        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                        kb = InlineKeyboardMarkup(inline_keyboard=[
+                            [InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"confirm_deal:{deal_id}")]
+                        ])
+                        await message.bot.send_message(admin_id, notify_text, parse_mode='HTML', reply_markup=kb)
+                    except Exception as e:
+                        logging.error(f"Admin notify: {e}")
+                else:
+                    await message.answer("❌ Ошибка сохранения документа")
+    except Exception as e:
+        logging.error(f"Save doc: {e}")
+        await message.answer("❌ Ошибка")
+    
+    await state.clear()
 
 # === Смотреть Диалог ===
 @crm_router.callback_query(F.data.startswith("dialog:"))

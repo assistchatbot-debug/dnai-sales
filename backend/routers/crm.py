@@ -62,7 +62,7 @@ async def get_lead_details(company_id: int, lead_id: int):
         
         # Get deals
         deals_result = await db.execute(text("""
-            SELECT id, deal_number, deal_amount, deal_currency, status, confirmed, confirmed_at
+            SELECT id, deal_number, deal_amount, deal_currency, status, confirmed, confirmed_at, payment_date, payment_doc_number
             FROM lead_deals WHERE lead_id = :lid ORDER BY deal_number
         """), {'lid': lead_id})
         deals = [
@@ -73,7 +73,9 @@ async def get_lead_details(company_id: int, lead_id: int):
                 "deal_currency": d[3] or 'KZT', 
                 "status": d[4],
                 "confirmed": d[5] or False,
-                "confirmed_at": str(d[6])[:10] if d[6] else None
+                "confirmed_at": str(d[6])[:10] if d[6] else None,
+                "payment_date": str(d[7]) if d[7] else None,
+                "payment_doc_number": d[8] if d[8] else None
             }
             for d in deals_result.fetchall()
         ]
@@ -545,6 +547,31 @@ async def update_status_coins(company_id: int, status_id: int, data: dict):
         await db.commit()
         return {"status": "ok", "coins": coins}
 
+
+
+@router.patch("/{company_id}/deals/{deal_id}/document")
+async def save_deal_document(company_id: int, deal_id: int, data: dict = Body(...)):
+    """Save payment document number and date"""
+    from datetime import datetime
+    payment_doc_number = data.get('payment_doc_number', '')
+    payment_date_str = data.get('payment_date')  # формат: YYYY-MM-DD
+    
+    # Конвертировать строку в date объект
+    payment_date = None
+    if payment_date_str:
+        try:
+            payment_date = datetime.strptime(payment_date_str, "%Y-%m-%d").date()
+        except:
+            pass
+    
+    async with get_db_session() as db:
+        await db.execute(text("""
+            UPDATE lead_deals 
+            SET payment_doc_number = :doc, payment_date = :pdate
+            WHERE id = :did AND company_id = :cid
+        """), {'doc': payment_doc_number, 'pdate': payment_date, 'did': deal_id, 'cid': company_id})
+        await db.commit()
+        return {"status": "ok"}
 
 @router.patch("/{company_id}/deals/{deal_id}/confirm")
 async def confirm_deal(company_id: int, deal_id: int):
