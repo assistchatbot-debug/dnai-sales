@@ -138,7 +138,12 @@ def format_lead_card(lead: dict, statuses: list = None) -> str:
             amount = d.get('deal_amount', 0)
             currency = d.get('deal_currency', 'KZT')
             formatted = f"{amount:,.0f}".replace(',', ' ')
-            card += f"\n💰 Сделка {i}: {formatted} {currency}"
+            # Показать ✅ если подтверждена + дата, иначе ⬜
+            if d.get('confirmed'):
+                date_str = d.get('confirmed_at', '')[:10] if d.get('confirmed_at') else ''
+                card += f"\n💰 Сделка {i}: {formatted} {currency} ✅ — {date_str}"
+            else:
+                card += f"\n💰 Сделка {i}: {formatted} {currency} ⬜"
     
     # Показать заметки
     notes = lead.get('notes', [])
@@ -645,6 +650,30 @@ async def process_deal_amount(message: types.Message, state: FSMContext):
                     deal_num = result.get('deal_number', 1)
                     formatted = f"{amount:,.0f}".replace(',', ' ')
                     await message.answer(f"✅ Сделка {deal_num}: {formatted} {currency}")
+                    
+                    # Отправить уведомление админу для подтверждения
+                    if result.get('notify_admin'):
+                        try:
+                            admin_id = message.bot.admin_chat_id
+                            deal_id = result.get('deal_id')
+                            client = result.get('client_name', 'Клиент')
+                            mgr = result.get('manager_name', 'Менеджер')
+                            lead_id_val = result.get('lead_id', lead_id)
+                            
+                            notify_text = (
+                                f"💰 <b>Новая сделка!</b>\n\n"
+                                f"Лид #{lead_id_val}\n"
+                                f"👤 Клиент: {client}\n"
+                                f"👨‍💼 Менеджер: {mgr}\n"
+                                f"💵 Сумма: {formatted} {currency}"
+                            )
+                            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                            kb = InlineKeyboardMarkup(inline_keyboard=[
+                                [InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"confirm_deal:{deal_id}")]
+                            ])
+                            await message.bot.send_message(admin_id, notify_text, parse_mode='HTML', reply_markup=kb)
+                        except Exception as e:
+                            logging.error(f"Admin notify: {e}")
                 else:
                     await message.answer("❌ Ошибка сохранения")
     except Exception as e:

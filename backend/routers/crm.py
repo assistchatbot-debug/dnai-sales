@@ -62,12 +62,19 @@ async def get_lead_details(company_id: int, lead_id: int):
         
         # Get deals
         deals_result = await db.execute(text("""
-            SELECT deal_number, deal_amount, deal_currency, status, created_at
+            SELECT id, deal_number, deal_amount, deal_currency, status, confirmed, confirmed_at
             FROM lead_deals WHERE lead_id = :lid ORDER BY deal_number
         """), {'lid': lead_id})
         deals = [
-            {"deal_number": d[0], "deal_amount": float(d[1]) if d[1] else 0, 
-             "deal_currency": d[2] or 'KZT', "status": d[3]}
+            {
+                "id": d[0],
+                "deal_number": d[1], 
+                "deal_amount": float(d[2]) if d[2] else 0, 
+                "deal_currency": d[3] or 'KZT', 
+                "status": d[4],
+                "confirmed": d[5] or False,
+                "confirmed_at": str(d[6])[:10] if d[6] else None
+            }
             for d in deals_result.fetchall()
         ]
         
@@ -314,9 +321,39 @@ async def save_deal_amount(company_id: int, lead_id: int, deal_id: int, data: di
                 WHERE company_id = :cid AND user_id = :mid
             """), {'amount': amount, 'cid': company_id, 'mid': manager_id})
         
+        # 5. Получить данные лида и менеджера для уведомления
+        lead_result = await db.execute(text("""
+            SELECT contact_info FROM leads WHERE id = :lid
+        """), {'lid': lead_id})
+        lead_row = lead_result.fetchone()
+        client_name = ''
+        if lead_row and lead_row[0]:
+            try:
+                import json
+                contact = json.loads(lead_row[0]) if isinstance(lead_row[0], str) else lead_row[0]
+                client_name = contact.get('name', '')
+            except:
+                pass
+        
+        mgr_result = await db.execute(text("""
+            SELECT full_name FROM company_managers WHERE company_id = :cid AND user_id = :mid
+        """), {'cid': company_id, 'mid': manager_id})
+        mgr_row = mgr_result.fetchone()
+        manager_name = mgr_row[0] if mgr_row else 'Менеджер'
+        
         await db.commit()
         
-        return {"status": "ok", "deal_number": deal_number, "currency": currency}
+        return {
+            "status": "ok", 
+            "deal_number": deal_number, 
+            "currency": currency,
+            "notify_admin": True,
+            "deal_id": deal_id,
+            "deal_amount": amount,
+            "lead_id": lead_id,
+            "client_name": client_name,
+            "manager_name": manager_name
+        }
 
 
 @router.post("/{company_id}/leads/{lead_id}/notes")
@@ -507,6 +544,19 @@ async def update_status_coins(company_id: int, status_id: int, data: dict):
         """), {'coins': coins, 'sid': status_id, 'cid': company_id})
         await db.commit()
         return {"status": "ok", "coins": coins}
+
+
+@router.patch("/{company_id}/deals/{deal_id}/confirm")
+async def confirm_deal(company_id: int, deal_id: int):
+    """Confirm a deal (admin only)"""
+    async with get_db_session() as db:
+        await db.execute(text("""
+            UPDATE lead_deals 
+            SET confirmed = TRUE, confirmed_at = NOW()
+            WHERE id = :did AND company_id = :cid
+        """), {'did': deal_id, 'cid': company_id})
+        await db.commit()
+        return {"status": "ok", "confirmed": True}
 
 @router.delete("/{company_id}/managers/{user_id}")
 async def delete_manager(company_id: int, user_id: int):

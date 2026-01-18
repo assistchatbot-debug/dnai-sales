@@ -1370,6 +1370,33 @@ async def edit_status_coins(callback: types.CallbackQuery, state: FSMContext):
         logging.error(f"Edit status: {e}")
     await callback.answer("❌ Ошибка")
 
+
+@router.callback_query(F.data.startswith("confirm_deal:"))
+async def confirm_deal_callback(callback: types.CallbackQuery):
+    """Confirm deal (admin only)"""
+    if not is_admin(callback.from_user.id, callback.bot):
+        await callback.answer("❌ Только для админа", show_alert=True)
+        return
+    
+    deal_id = int(callback.data.split(":")[1])
+    company_id = getattr(callback.bot, 'company_id', 1)
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.patch(
+                f'{API_BASE_URL}/crm/{company_id}/deals/{deal_id}/confirm'
+            ) as resp:
+                if resp.status == 200:
+                    # Обновить сообщение
+                    new_text = callback.message.text + "\n\n✅ <b>Сделка подтверждена!</b>"
+                    await callback.message.edit_text(new_text, parse_mode='HTML')
+                    await callback.answer("✅ Подтверждено!")
+                else:
+                    await callback.answer("❌ Ошибка", show_alert=True)
+    except Exception as e:
+        logging.error(f"Confirm deal: {e}")
+        await callback.answer("❌ Ошибка", show_alert=True)
+
 @router.message()
 async def handle_text(message: types.Message, state: FSMContext):
     if message.text.startswith('/'):
