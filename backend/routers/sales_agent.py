@@ -700,6 +700,7 @@ async def upsert_company(data: dict, db: AsyncSession = Depends(get_db)):
     """Create or update company"""
     company_id = data.get('id')
     
+    is_new_company = False
     if company_id:
         # Update existing
         result = await db.execute(select(Company).where(Company.id == company_id))
@@ -711,6 +712,7 @@ async def upsert_company(data: dict, db: AsyncSession = Depends(get_db)):
         # Create new
         company = Company()
         db.add(company)
+        is_new_company = True
         logging.info(f'➕ Creating new company')
     
     # Update fields
@@ -789,6 +791,26 @@ async def upsert_company(data: dict, db: AsyncSession = Depends(get_db)):
     
     await db.commit()
     await db.refresh(company)
+    
+    # Создать дефолтные статусы для НОВОЙ компании
+    if is_new_company:
+        from sqlalchemy import text
+        default_statuses = [
+            ('🟢', 'Новый', 10, 1, False),
+            ('🟡', 'В работе', 20, 2, False),
+            ('🔵', 'Переговоры', 30, 3, False),
+            ('💰', 'Ожидает оплаты', 50, 4, False),
+            ('✅', 'Завершён', 100, 5, True),
+            ('❌', 'Отказ', -100, 6, True),
+            ('🔄', 'Повторная сделка', 20, 21, False),
+        ]
+        for emoji, name, coins, sort, is_final in default_statuses:
+            await db.execute(text("""
+                INSERT INTO lead_status_settings (company_id, emoji, name, coins, sort_order, is_final)
+                VALUES (:cid, :emoji, :name, :coins, :sort, :final)
+            """), {'cid': company.id, 'emoji': emoji, 'name': name, 'coins': coins, 'sort': sort, 'final': is_final})
+        await db.commit()
+        logging.info(f'✅ Created 7 default statuses for company {company.id}')
     
     logging.info(f'✅ Company saved: {company.id} - {company.name}')
     return {'id': company.id, 'status': 'ok', 'name': company.name}

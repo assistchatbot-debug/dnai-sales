@@ -140,6 +140,23 @@ async def assign_lead(company_id: int, lead_id: int, data: dict = Body(...)):
         return {"status": "ok", "coins_earned": 1}
 
 
+
+async def get_sort_order(db, company_id: int, status_id) -> int:
+    """Get sort_order by status_id for multi-tenancy support"""
+    result = await db.execute(text("""
+        SELECT sort_order FROM lead_status_settings 
+        WHERE company_id = :cid AND id = :sid
+    """), {'cid': company_id, 'sid': int(status_id)})
+    return result.scalar() or 0
+
+async def get_status_id_by_sort(db, company_id: int, sort_order: int) -> int:
+    """Get status_id by sort_order for multi-tenancy support"""
+    result = await db.execute(text("""
+        SELECT id FROM lead_status_settings 
+        WHERE company_id = :cid AND sort_order = :sort
+    """), {'cid': company_id, 'sort': sort_order})
+    return result.scalar() or 0
+
 @router.patch("/{company_id}/leads/{lead_id}/status")
 async def update_lead_status(company_id: int, lead_id: int, data: dict = Body(...)):
     """Update lead status and award coins (with protection)"""
@@ -147,11 +164,21 @@ async def update_lead_status(company_id: int, lead_id: int, data: dict = Body(..
     original_new_status = str(new_status)  # Запомнить до сброса
     manager_id = data.get('manager_id')
     
-    # "Повторная сделка" (28) → сбросить на "В работе" (8)
-    if str(new_status) == '28':
-        new_status = '8'
+    # Определение sort_order будет внутри async with
+    original_sort_order = 0
+
     
     async with get_db_session() as db:
+        # 0. Определить sort_order для нового статуса (мультитенантность)
+        if str(new_status).isdigit():
+            original_sort_order = await get_sort_order(db, company_id, int(new_status))
+        
+        # "Повторная сделка" (sort_order=21) → сбросить на "В работе" (sort_order=2)
+        if original_sort_order == 21:
+            in_progress_id = await get_status_id_by_sort(db, company_id, 2)
+            if in_progress_id:
+                new_status = str(in_progress_id)
+        
         # 1. Получить ТЕКУЩИЙ статус лида
         current_result = await db.execute(text("""
             SELECT status FROM leads WHERE id = :lid AND company_id = :cid
@@ -187,31 +214,36 @@ async def update_lead_status(company_id: int, lead_id: int, data: dict = Body(..
         new_status_int = int(original_new_status) if original_new_status.isdigit() else int(new_status)
         current_status_int = int(current_status)
         
-        # Отказ (24) — можно нажать в любой момент
-        if new_status_int == 24:
+        # Получить sort_order для текущего статуса
+        current_sort = await get_sort_order(db, company_id, current_status_int) if str(current_status).isdigit() else 0
+        new_sort = original_sort_order  # Уже получен выше
+        
+        # Отказ (sort=6) — можно нажать в любой момент
+        if new_sort == 6:
             pass  # Всегда разрешён
-        # Повторная сделка (28) — разрешена из Завершён (20) или Отказ (24)
-        elif new_status_int == 28:
-            if current_status_int not in [20, 24]:
+        # Повторная сделка (sort=21) — разрешена из Завершён (sort=5) или Отказ (sort=6)
+        elif new_sort == 21:
+            if current_sort not in [5, 6]:
                 return {"status": "error", "message": "Повторная сделка только после Завершён или Отказ"}
-        # Из Завершён (20) можно только в Отказ или Повторную
-        elif current_status_int == 20:
-            if new_status_int not in [24, 28]:
+        # Из Завершён (sort=5) можно только в Отказ или Повторную
+        elif current_sort == 5:
+            if new_sort not in [6, 21]:
                 return {"status": "error", "message": "Из Завершён только Отказ или Повторная"}
-        # Из Отказа (24) можно только в Повторную
-        elif current_status_int == 24:
-            if new_status_int != 28:
+        # Из Отказа (sort=6) можно только в Повторную
+        elif current_sort == 6:
+            if new_sort != 21:
                 return {"status": "error", "message": "Из Отказа только Повторная сделка"}
         # Обычные статусы — только последовательно (разница ≤ 1)
         elif abs(new_order - current_order) > 1:
             return {"status": "error", "message": "Нельзя перепрыгивать статусы"}
         
         # 5. Определить изменение монет
-        # Повторная сделка — брать coins из статуса 28
-        if original_new_status == '28':
+        # Повторная сделка (sort=21) — брать coins из этого статуса
+        if original_sort_order == 21:
+            repeat_id = await get_status_id_by_sort(db, company_id, 21)
             repeat_result = await db.execute(text("""
-                SELECT coins FROM lead_status_settings WHERE company_id = :cid AND id = 28
-            """), {'cid': company_id})
+                SELECT coins FROM lead_status_settings WHERE company_id = :cid AND id = :rid
+            """), {'cid': company_id, 'rid': repeat_id})
             coins_change = repeat_result.scalar() or 0
         elif new_order > current_order:
             coins_change = new_data['coins']  # Вперёд: +coins нового
@@ -238,8 +270,8 @@ async def update_lead_status(company_id: int, lead_id: int, data: dict = Body(..
         
         await db.commit()
         
-        # Если статус "Завершён" (id=20) — создать сделку и запросить сумму
-        if status_id == 20:
+        # Если статус "Завершён" (sort=5) — создать сделку и запросить сумму
+        if new_order == 5:
             # Получить валюту компании
             curr_result = await db.execute(text("""
                 SELECT currency FROM companies WHERE id = :cid
