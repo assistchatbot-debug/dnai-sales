@@ -387,6 +387,49 @@ async def process_admin_command(message: types.Message, text: str, state: FSMCon
             logging.error(f"Managers error: {e}")
             await message.answer("📋 Менеджеры: 0\n\nЧтобы добавить: /join")
 
+    elif 'события' in text_lower:
+        company_id = getattr(message.bot, 'company_id', 1)
+        user_id = message.from_user.id
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f'{API_BASE_URL}/crm/{company_id}/events?user_id={user_id}') as resp:
+                    if resp.status == 200:
+                        events = await resp.json()
+                        if not events:
+                            await message.answer("📅 У вас нет предстоящих событий\n\n💡 Создать событие можно из карточки лида")
+                            return
+                        
+                        text = "📅 <b>Ваши события:</b>\n\n"
+                        buttons = []
+                        for e in events[:10]:
+                            emoji = {'call': '📞', 'meeting': '🤝', 'email': '📧', 'task': '📋'}.get(e.get('event_type', ''), '📋')
+                            dt_raw = e.get('scheduled_at', '')
+                            if dt_raw and len(dt_raw) >= 16:
+                                dt = f"{dt_raw[8:10]}.{dt_raw[5:7]}.{dt_raw[:4]} {dt_raw[11:16]}"
+                            else:
+                                dt = dt_raw[:16].replace('T', ' ') if dt_raw else ''
+                            client = e.get('client_name', 'Клиент')
+                            desc = e.get('description', '')[:30] if e.get('description') else ''
+                            event_id = e.get('id')
+                            
+                            text += f"{emoji} {dt}\n   👤 {client}"
+                            if desc:
+                                text += f" — {desc}"
+                            text += "\n\n"
+                            
+                            buttons.append([
+                                InlineKeyboardButton(text=f"✏️ {emoji} {dt[:5]}", callback_data=f"ev_edit:{event_id}"),
+                                InlineKeyboardButton(text="🗑", callback_data=f"ev_del:{event_id}")
+                            ])
+                        
+                        kb = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
+                        await message.answer(text, parse_mode='HTML', reply_markup=kb)
+                    else:
+                        await message.answer("❌ Ошибка загрузки")
+        except Exception as e:
+            logging.error(f"Events error: {e}")
+            await message.answer("❌ Ошибка")
+
     elif 'лидерборд' in text_lower:
         company_id = getattr(message.bot, 'company_id', 1)
         try:

@@ -1099,3 +1099,50 @@ async def event_cancel(callback: types.CallbackQuery):
         )
     await callback.message.edit_text("❌ Событие отменено")
 
+# === РЕДАКТИРОВАНИЕ И УДАЛЕНИЕ СОБЫТИЙ ===
+
+@crm_router.callback_query(F.data.startswith("ev_edit:"))
+async def edit_event(callback: types.CallbackQuery, state: FSMContext):
+    """Edit event - restart creation flow"""
+    event_id = callback.data.split(":")[1]
+    company_id = callback.bot.company_id
+    
+    # Получить событие
+    async with aiohttp.ClientSession() as session:
+        async with session.get(f'{API_BASE_URL}/crm/{company_id}/events?user_id={callback.from_user.id}') as resp:
+            events = await resp.json() if resp.status == 200 else []
+    
+    event = next((e for e in events if str(e.get('id')) == event_id), None)
+    if not event:
+        await callback.answer("Событие не найдено", show_alert=True)
+        return
+    
+    # Удалить старое событие
+    async with aiohttp.ClientSession() as session:
+        await session.patch(f'{API_BASE_URL}/crm/{company_id}/events/{event_id}', json={'status': 'cancelled'})
+    
+    # Начать создание нового
+    await state.update_data(event_lead_id=event.get('lead_id'))
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📞 Звонок", callback_data="etype:call")],
+        [InlineKeyboardButton(text="🤝 Встреча", callback_data="etype:meeting")],
+        [InlineKeyboardButton(text="📧 Письмо", callback_data="etype:email")],
+        [InlineKeyboardButton(text="📋 Задача", callback_data="etype:task")]
+    ])
+    await callback.message.edit_text("✏️ Редактирование события\n\n📅 Выберите тип:", reply_markup=kb)
+    await state.set_state(EventStates.selecting_type)
+
+
+@crm_router.callback_query(F.data.startswith("ev_del:"))
+async def delete_event(callback: types.CallbackQuery):
+    """Delete event"""
+    event_id = callback.data.split(":")[1]
+    company_id = callback.bot.company_id
+    
+    async with aiohttp.ClientSession() as session:
+        await session.patch(f'{API_BASE_URL}/crm/{company_id}/events/{event_id}', json={'status': 'cancelled'})
+    
+    await callback.answer("🗑 Событие удалено", show_alert=True)
+    # Обновить список
+    await callback.message.delete()
+
