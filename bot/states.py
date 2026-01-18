@@ -18,3 +18,9 @@ class ManagerFlow(StatesGroup):
     editing_social_greeting = State()
     editing_social_name = State()
     editing_status_coins = State()
+
+class EventStates(StatesGroup):
+    selecting_type = State()
+    entering_datetime = State()
+    entering_description = State()
+    selecting_reminder = State()

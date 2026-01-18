@@ -1,5 +1,6 @@
 import os
 import asyncio
+from scheduler import reminder_scheduler
 import logging
 import aiohttp
 from aiogram import Bot, Dispatcher
@@ -89,6 +90,13 @@ async def main():
     
     try:
         # Start polling all bots simultaneously
+        # Create bots dictionary for scheduler
+        bots_dict = {bot.company_id: bot for bot in bots}
+        
+        # Start reminder scheduler
+        asyncio.create_task(reminder_scheduler(bots_dict))
+        logging.info("📅 Reminder scheduler started")
+        
         await dp.start_polling(*bots, drop_pending_updates=True)
     except Exception as e:
         logging.error(f"❌ Polling error: {e}")

@@ -1,4 +1,6 @@
 """CRM Handlers - Manager Lead Cards - v5 FINAL"""
+from states import EventStates
+from states import EventStates
 import logging
 import aiohttp
 from aiogram import Router, types, F
@@ -201,7 +203,10 @@ def get_lead_keyboard(lead_id: int, lead: dict, statuses: list) -> InlineKeyboar
             InlineKeyboardButton(text="📝 Заметка", callback_data=f"lnt:{lead_id}")
         ])
     
-    buttons.append([InlineKeyboardButton(text="« Назад", callback_data="back_leads")])
+    buttons.append([
+        InlineKeyboardButton(text="📅 Событие", callback_data=f"event:{lead_id}"),
+        InlineKeyboardButton(text="« Назад", callback_data="back_leads")
+    ])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 # === /reset ===
@@ -819,3 +824,172 @@ async def view_dialog_callback(callback: types.CallbackQuery):
 async def back(callback: types.CallbackQuery):
     await callback.message.delete()
     await callback.answer()
+
+# === СОБЫТИЯ И НАПОМИНАНИЯ ===
+
+EVENT_TYPES = {
+    'call': '📞 Звонок',
+    'meeting': '🤝 Встреча',
+    'email': '📧 Письмо',
+    'task': '📋 Задача'
+}
+
+@crm_router.callback_query(F.data.startswith("event:"))
+async def start_create_event(callback: types.CallbackQuery, state: FSMContext):
+    """Start creating event for lead"""
+    lead_id = callback.data.split(":")[1]
+    await state.update_data(event_lead_id=lead_id)
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📞 Звонок", callback_data="etype:call")],
+        [InlineKeyboardButton(text="🤝 Встреча", callback_data="etype:meeting")],
+        [InlineKeyboardButton(text="📧 Письмо", callback_data="etype:email")],
+        [InlineKeyboardButton(text="📋 Задача", callback_data="etype:task")]
+    ])
+    await callback.message.edit_text("📅 Выберите тип события:", reply_markup=kb)
+    await state.set_state(EventStates.selecting_type)
+
+
+@crm_router.callback_query(F.data.startswith("etype:"))
+async def select_event_type(callback: types.CallbackQuery, state: FSMContext):
+    """Event type selected"""
+    event_type = callback.data.split(":")[1]
+    await state.update_data(event_type=event_type)
+    await callback.message.edit_text("📅 Введите дату и время (ДД.ММ.ГГГГ ЧЧ:ММ):\nНапример: 19.01.2026 10:00")
+    await state.set_state(EventStates.entering_datetime)
+
+
+@crm_router.message(EventStates.entering_datetime)
+async def process_event_datetime(message: types.Message, state: FSMContext):
+    """Process event datetime input"""
+    from datetime import datetime
+    try:
+        # Поддержка 10.00 и 10:00
+        text = message.text.strip().replace('.', ':', 2)  # Первые 2 точки оставить, третью заменить
+        # Формат: ДД.ММ.ГГГГ ЧЧ:ММ или ДД.ММ.ГГГГ ЧЧ.ММ
+        parts = message.text.strip().split(' ')
+        if len(parts) == 2:
+            date_part = parts[0]  # ДД.ММ.ГГГГ
+            time_part = parts[1].replace('.', ':')  # 10.00 → 10:00
+            text = date_part + ' ' + time_part
+        else:
+            text = message.text.strip()
+        dt = datetime.strptime(text, "%d.%m.%Y %H:%M")
+        if dt < datetime.now():
+            await message.answer("❌ Дата должна быть в будущем")
+            return
+    except ValueError:
+        await message.answer("❌ Неверный формат. Используйте: ДД.ММ.ГГГГ ЧЧ:ММ")
+        return
+    
+    await state.update_data(scheduled_at=dt.isoformat())
+    await message.answer("📝 Введите описание (или '.' чтобы пропустить):")
+    await state.set_state(EventStates.entering_description)
+
+
+@crm_router.message(EventStates.entering_description)
+async def process_event_description(message: types.Message, state: FSMContext):
+    """Process description and show reminder options"""
+    desc = message.text.strip() if message.text.strip() != '.' else ''
+    await state.update_data(event_description=desc)
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="15 мин", callback_data="eremind:15"),
+            InlineKeyboardButton(text="30 мин", callback_data="eremind:30"),
+        ],
+        [
+            InlineKeyboardButton(text="45 мин", callback_data="eremind:45"),
+            InlineKeyboardButton(text="60 мин", callback_data="eremind:60"),
+        ]
+    ])
+    await message.answer("⏰ Напомнить за:", reply_markup=kb)
+    await state.set_state(EventStates.selecting_reminder)
+
+
+@crm_router.callback_query(F.data.startswith("eremind:"))
+async def save_event(callback: types.CallbackQuery, state: FSMContext):
+    """Save event to database"""
+    remind = int(callback.data.split(":")[1])
+    data = await state.get_data()
+    company_id = callback.bot.company_id
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f'{API_BASE_URL}/crm/{company_id}/events',
+                json={
+                    'lead_id': int(data['event_lead_id']),
+                    'user_id': callback.from_user.id,
+                    'event_type': data['event_type'],
+                    'description': data.get('event_description', ''),
+                    'scheduled_at': data['scheduled_at'],
+                    'remind_before_minutes': remind
+                }
+            ) as resp:
+                if resp.status == 200:
+                    event_type = EVENT_TYPES.get(data['event_type'], data['event_type'])
+                    await callback.message.edit_text(
+                        f"✅ Событие создано!\n\n"
+                        f"{event_type}\n"
+                        f"📅 {data['scheduled_at'][:16].replace('T', ' ')}\n"
+                        f"⏰ Напоминание за {remind} мин"
+                    )
+                else:
+                    await callback.message.edit_text("❌ Ошибка создания события")
+    except Exception as e:
+        logging.error(f"Event create error: {e}")
+        await callback.message.edit_text("❌ Ошибка")
+    
+    await state.clear()
+
+
+@crm_router.callback_query(F.data.startswith("edone:"))
+async def event_done(callback: types.CallbackQuery):
+    """Mark event as done"""
+    event_id = callback.data.split(":")[1]
+    company_id = callback.bot.company_id
+    
+    async with aiohttp.ClientSession() as session:
+        await session.patch(
+            f'{API_BASE_URL}/crm/{company_id}/events/{event_id}',
+            json={'status': 'done'}
+        )
+    await callback.message.edit_text("✅ Событие выполнено!")
+
+
+@crm_router.callback_query(F.data.startswith("edelay:"))
+async def event_delay(callback: types.CallbackQuery):
+    """Delay event by 15 minutes"""
+    parts = callback.data.split(":")
+    event_id = parts[1]
+    current_time = parts[2] if len(parts) > 2 else None
+    company_id = callback.bot.company_id
+    
+    from datetime import datetime, timedelta
+    if current_time:
+        new_time = datetime.fromisoformat(current_time) + timedelta(minutes=15)
+    else:
+        new_time = datetime.now() + timedelta(minutes=15)
+    
+    async with aiohttp.ClientSession() as session:
+        await session.patch(
+            f'{API_BASE_URL}/crm/{company_id}/events/{event_id}',
+            json={'scheduled_at': new_time.isoformat()}
+        )
+    await callback.message.edit_text(f"⏰ Отложено на 15 минут (до {new_time.strftime('%H:%M')})")
+
+
+@crm_router.callback_query(F.data.startswith("ecancel:"))
+async def event_cancel(callback: types.CallbackQuery):
+    """Cancel event"""
+    event_id = callback.data.split(":")[1]
+    company_id = callback.bot.company_id
+    
+    async with aiohttp.ClientSession() as session:
+        await session.patch(
+            f'{API_BASE_URL}/crm/{company_id}/events/{event_id}',
+            json={'status': 'cancelled'}
+        )
+    await callback.message.edit_text("❌ Событие отменено")
+

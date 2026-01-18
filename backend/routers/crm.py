@@ -668,3 +668,138 @@ async def get_full_report(company_id: int, lead_id: int):
             "ai_summary": ai_summary,
             "conversation_history": conversation
         }
+
+# === СОБЫТИЯ И НАПОМИНАНИЯ ===
+
+@router.post("/{company_id}/events")
+async def create_event(company_id: int, data: dict = Body(...)):
+    """Create scheduled event for lead"""
+    lead_id = data.get('lead_id')
+    user_id = data.get('user_id')
+    event_type = data.get('event_type')
+    title = data.get('title', '')
+    description = data.get('description', '')
+    scheduled_at = data.get('scheduled_at')
+    remind_before = data.get('remind_before_minutes', 30)
+    
+    from datetime import datetime
+    
+    # Преобразовать строку в datetime
+    if isinstance(scheduled_at, str):
+        scheduled_at = datetime.fromisoformat(scheduled_at.replace('Z', '+00:00'))
+    
+    async with get_db_session() as db:
+        result = await db.execute(text("""
+            INSERT INTO lead_events_schedule 
+            (company_id, lead_id, user_id, event_type, title, description, scheduled_at, remind_before_minutes)
+            VALUES (:cid, :lid, :uid, :type, :title, :desc, :sched, :remind)
+            RETURNING id
+        """), {'cid': company_id, 'lid': lead_id, 'uid': user_id, 'type': event_type, 
+               'title': title, 'desc': description, 'sched': scheduled_at, 'remind': remind_before})
+        event_id = result.scalar()
+        await db.commit()
+        return {"id": event_id, "status": "ok"}
+
+
+@router.get("/{company_id}/events")
+async def get_user_events(company_id: int, user_id: int = None):
+    """Get events for user"""
+    async with get_db_session() as db:
+        query = """
+            SELECT e.id, e.lead_id, e.event_type, e.title, e.description, 
+                   e.scheduled_at, e.status, l.contact_info
+            FROM lead_events_schedule e
+            LEFT JOIN leads l ON e.lead_id = l.id
+            WHERE e.company_id = :cid AND e.status = 'pending'
+        """
+        params = {'cid': company_id}
+        if user_id:
+            query += " AND e.user_id = :uid"
+            params['uid'] = user_id
+        query += " ORDER BY e.scheduled_at"
+        
+        result = await db.execute(text(query), params)
+        events = []
+        for r in result.fetchall():
+            contact = r[7] or {}
+            events.append({
+                'id': r[0], 'lead_id': r[1], 'event_type': r[2], 'title': r[3],
+                'description': r[4], 'scheduled_at': str(r[5]), 'status': r[6],
+                'client_name': contact.get('name', 'Клиент')
+            })
+        return events
+
+
+@router.get("/{company_id}/leads/{lead_id}/events")
+async def get_lead_events(company_id: int, lead_id: int):
+    """Get events for specific lead"""
+    async with get_db_session() as db:
+        result = await db.execute(text("""
+            SELECT id, event_type, title, description, scheduled_at, status
+            FROM lead_events_schedule
+            WHERE company_id = :cid AND lead_id = :lid AND status = 'pending'
+            ORDER BY scheduled_at
+        """), {'cid': company_id, 'lid': lead_id})
+        return [{'id': r[0], 'event_type': r[1], 'title': r[2], 'description': r[3],
+                 'scheduled_at': str(r[4]), 'status': r[5]} for r in result.fetchall()]
+
+
+@router.patch("/{company_id}/events/{event_id}")
+async def update_event(company_id: int, event_id: int, data: dict = Body(...)):
+    """Update event status or reschedule"""
+    status = data.get('status')
+    new_time = data.get('scheduled_at')
+    
+    async with get_db_session() as db:
+        if status:
+            await db.execute(text("""
+                UPDATE lead_events_schedule SET status = :status
+                WHERE id = :eid AND company_id = :cid
+            """), {'status': status, 'eid': event_id, 'cid': company_id})
+        if new_time:
+            await db.execute(text("""
+                UPDATE lead_events_schedule SET scheduled_at = CAST(:time AS TIMESTAMP), reminder_sent = FALSE
+                WHERE id = :eid AND company_id = :cid
+            """), {'time': new_time, 'eid': event_id, 'cid': company_id})
+        await db.commit()
+        return {"status": "ok"}
+
+
+@router.get("/pending-reminders")
+async def get_pending_reminders():
+    """Get events that need reminder (for scheduler)"""
+    async with get_db_session() as db:
+        result = await db.execute(text("""
+            SELECT e.id, e.company_id, e.lead_id, e.user_id, e.event_type, 
+                   e.title, e.description, e.scheduled_at, e.remind_before_minutes,
+                   l.contact_info
+            FROM lead_events_schedule e
+            LEFT JOIN leads l ON e.lead_id = l.id
+            WHERE e.status = 'pending' 
+              AND e.reminder_sent = FALSE
+              AND e.scheduled_at - (e.remind_before_minutes || ' minutes')::interval <= NOW()
+              AND e.scheduled_at > NOW()
+        """))
+        events = []
+        for r in result.fetchall():
+            contact = r[9] or {}
+            events.append({
+                'id': r[0], 'company_id': r[1], 'lead_id': r[2], 'user_id': r[3],
+                'event_type': r[4], 'title': r[5], 'description': r[6],
+                'scheduled_at': str(r[7]), 'remind_before': r[8],
+                'client_name': contact.get('name', 'Клиент'),
+                'client_phone': contact.get('phone', '')
+            })
+        return events
+
+
+@router.patch("/events/{event_id}/reminder-sent")
+async def mark_reminder_sent(event_id: int):
+    """Mark reminder as sent"""
+    async with get_db_session() as db:
+        await db.execute(text("""
+            UPDATE lead_events_schedule SET reminder_sent = TRUE WHERE id = :eid
+        """), {'eid': event_id})
+        await db.commit()
+        return {"status": "ok"}
+
