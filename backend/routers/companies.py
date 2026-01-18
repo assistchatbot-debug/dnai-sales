@@ -22,6 +22,28 @@ class CompanyResponse(BaseModel):
     class Config:
         orm_mode = True
 
+
+async def create_default_statuses(db, company_id: int):
+    """Create default lead status settings for new company"""
+    from sqlalchemy import text
+    default_statuses = [
+        {'emoji': '🟢', 'name': 'Новый', 'coins': 10, 'sort_order': 1, 'is_final': False},
+        {'emoji': '🟡', 'name': 'В работе', 'coins': 20, 'sort_order': 2, 'is_final': False},
+        {'emoji': '🔵', 'name': 'Переговоры', 'coins': 30, 'sort_order': 3, 'is_final': False},
+        {'emoji': '💰', 'name': 'Ожидает оплаты', 'coins': 50, 'sort_order': 4, 'is_final': False},
+        {'emoji': '✅', 'name': 'Завершён', 'coins': 100, 'sort_order': 5, 'is_final': True},
+        {'emoji': '❌', 'name': 'Отказ', 'coins': -100, 'sort_order': 6, 'is_final': True},
+        {'emoji': '🔄', 'name': 'Повторная сделка', 'coins': 20, 'sort_order': 21, 'is_final': False},
+    ]
+    for status in default_statuses:
+        await db.execute(text("""
+            INSERT INTO lead_status_settings (company_id, emoji, name, coins, sort_order, is_final)
+            VALUES (:cid, :emoji, :name, :coins, :sort, :final)
+        """), {
+            'cid': company_id, 'emoji': status['emoji'], 'name': status['name'],
+            'coins': status['coins'], 'sort': status['sort_order'], 'final': status['is_final']
+        })
+
 @router.post("/", response_model=CompanyResponse)
 @limiter.limit("10/minute")
 async def create_company(request: Request, company: CompanyCreate, db: AsyncSession = Depends(get_db)):
@@ -34,6 +56,10 @@ async def create_company(request: Request, company: CompanyCreate, db: AsyncSess
     await db.refresh(new_company)
     default_config = SalesAgentConfig(company_id=new_company.id)
     db.add(default_config)
+    
+    # Создать дефолтные статусы
+    await create_default_statuses(db, new_company.id)
+    
     await db.commit()
     return new_company
 
