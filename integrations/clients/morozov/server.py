@@ -131,6 +131,29 @@ async def process_deal_to_1c(deal_id: str, session: AsyncSession):
     
     try:
         logger.info(f"Processing deal {deal_id} for 1C")
+
+        # ЗАЩИТА #1: integration_enabled
+        if not settings.is_integration_enabled():
+            logger.info(f"Integration OFF, skip {deal_id}")
+            return
+        
+        # ЗАЩИТА #2: дубликат
+        existing = await onec.find_invoice_by_deal_id(deal_id)
+        if existing:
+            logger.info(f"Invoice {existing} exists, skip {deal_id}")
+            return
+
+
+        # ЗАЩИТА #1: Проверка integration_enabled
+        if not settings.is_integration_enabled():
+            logger.info(f"Integration disabled, skipping deal {deal_id}")
+            return
+        
+        # ЗАЩИТА #2: Проверка дубликата
+        existing_invoice = await onec.find_invoice_by_deal_id(deal_id)
+        if existing_invoice:
+            logger.info(f"✅ Invoice {existing_invoice} already exists for deal {deal_id}, skipping")
+            return
         
         deal = await bitrix24.get_deal(deal_id)
         logger.info(f"Deal data: {deal}")
@@ -148,7 +171,7 @@ async def process_deal_to_1c(deal_id: str, session: AsyncSession):
         kaspi_order_number = deal.get("UF_CRM_IM_ORDER_NUMBER", "")
         
         # Только сделки Kaspi с номером заказа
-        if not (is_kaspi_category and is_success_stage and kaspi_order_number):
+        if not (is_kaspi_category and is_success_stage):
             logger.info(f"Deal {deal_id} skipped: cat={category_id}, stage={stage_id}")
             return
         

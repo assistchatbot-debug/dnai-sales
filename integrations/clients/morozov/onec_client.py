@@ -21,6 +21,43 @@ class OneCClient:
         self.password = settings.onec_password
         self.odata_url = f"{self.base_url}/odata/standard.odata"
         self.client = httpx.AsyncClient(timeout=60.0, auth=(self.username, self.password))
+
+    async def find_invoice_by_deal_id(self, deal_id: str):
+        """Найти накладную по ID сделки в комментарии 1С"""
+        try:
+            from urllib.parse import quote
+            search_text = f"Bitrix24 сделка {deal_id}:"
+            filter_str = f"substringof('{search_text}', Комментарий)"
+            url = f"{self.odata_url}/Document_%D0%A0%D0%B5%D0%B0%D0%BB%D0%B8%D0%B7%D0%B0%D1%86%D0%B8%D1%8F%D0%A2%D0%BE%D0%B2%D0%B0%D1%80%D0%BE%D0%B2%D0%A3%D1%81%D0%BB%D1%83%D0%B3?$filter={quote(filter_str)}&$select=Number&$top=1&$format=json"
+            response = await self.client.get(url)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("value"):
+                    return data["value"][0].get("Number")
+            return None
+        except Exception as e:
+            logger.error(f"Ошибка поиска: {e}")
+            return None
+
+
+    async def find_invoice_by_deal_id(self, deal_id: str) -> Optional[str]:
+        """Найти накладную по ID сделки в комментарии 1С"""
+        try:
+            from urllib.parse import quote
+            search_text = f"Bitrix24 сделка {deal_id}:"
+            filter_str = f"substringof('{search_text}', Комментарий)"
+            url = f"{self.odata_url}/Document_%D0%A0%D0%B5%D0%B0%D0%BB%D0%B8%D0%B7%D0%B0%D1%86%D0%B8%D1%8F%D0%A2%D0%BE%D0%B2%D0%B0%D1%80%D0%BE%D0%B2%D0%A3%D1%81%D0%BB%D1%83%D0%B3?$filter={quote(filter_str)}&$select=Number&$top=1&$format=json"
+            response = await self.client.get(url)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("value"):
+                    invoice_number = data["value"][0].get("Number")
+                    logger.info(f"✅ Найдена накладная {invoice_number} для сделки {deal_id}")
+                    return invoice_number
+            return None
+        except Exception as e:
+            logger.error(f"Ошибка поиска накладной: {e}")
+            return None
     
     async def create_order(self, order_data: Dict) -> Dict:
         deal_id = order_data.get('deal_id', 'unknown')

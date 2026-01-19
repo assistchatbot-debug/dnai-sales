@@ -60,4 +60,34 @@ class Settings:
         self.telegram_bot_token = ''
         self.telegram_chat_id = 0
 
+
+    def is_integration_enabled(self) -> bool:
+        """Проверка integration_enabled в реальном времени из БД"""
+        try:
+            import httpx
+            response = httpx.get(f'{self.api_base_url}/sales/companies/all', timeout=3.0)
+            if response.status_code == 200:
+                companies = response.json()
+                company = next((c for c in companies if c['id'] == self.company_id), None)
+                if company:
+                    enabled = company.get('integration_enabled', False)
+                    logger.debug(f"integration_enabled = {enabled}")
+                    return enabled
+        except Exception as e:
+            logger.error(f"Ошибка проверки integration_enabled: {e}")
+            return False
+        return False
+
+    def is_integration_enabled(self):
+        """Runtime проверка integration_enabled"""
+        try:
+            import httpx
+            r = httpx.get(f'{self.api_base_url}/sales/companies/all', timeout=3.0)
+            if r.status_code == 200:
+                comp = next((c for c in r.json() if c['id'] == self.company_id), None)
+                return comp.get('integration_enabled', False) if comp else False
+        except:
+            return False
+        return False
+
 settings = Settings()
