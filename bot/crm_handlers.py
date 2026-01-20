@@ -1401,7 +1401,10 @@ async def show_events_list(msg_or_cb, offset=0, filter_type=None, filter_period=
     # Получаем события
     url = f'{API_BASE_URL}/crm/{company_id}/events?user_id={user_id}&offset={offset}&limit=5'
     if filter_type:
-        url += f'&event_type={filter_type}'
+        if filter_type == 'recurring':
+            url += '&is_recurring=true'
+        else:
+            url += f'&event_type={filter_type}' 
     
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as resp:
@@ -1475,7 +1478,10 @@ async def show_events_list(msg_or_cb, offset=0, filter_type=None, filter_period=
     buttons.append(period_row)
     
     # Создать событие
-    buttons.append([InlineKeyboardButton(text="➕ Создать событие", callback_data="create_ev_menu")])
+    buttons.append([
+        InlineKeyboardButton(text="➕ Создать", callback_data="create_ev_menu"),
+        InlineKeyboardButton(text="📜 История", callback_data="ev_history:0")
+    ])
     
     kb = InlineKeyboardMarkup(inline_keyboard=buttons)
     text = "<b>📅 Мои события</b>" if events else "<b>📅 Нет событий</b>"
@@ -1563,6 +1569,8 @@ async def view_event_detail(callback: types.CallbackQuery):
             text += f"\n📝 {desc}"
         
         kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Выполнено", callback_data=f"evst:done:{event_id}"),
+             InlineKeyboardButton(text="⚠️ Не выполнено", callback_data=f"evst:missed:{event_id}")],
             [InlineKeyboardButton(text="✏️ Редактировать", callback_data=f"edit_event:{event_id}"),
              InlineKeyboardButton(text="🗑 Удалить", callback_data=f"del_event:{event_id}")],
             [InlineKeyboardButton(text="« Назад", callback_data="back_ev_list")]
@@ -1632,5 +1640,67 @@ async def set_recurring(callback: types.CallbackQuery):
             f"✅ Событие #{event_id} создано!\n🔁 Повтор: {pattern_names.get(pattern)}",
             reply_markup=kb
         )
+    await callback.answer()
+
+
+
+# ========== EVENT STATUS & HISTORY HANDLERS ==========
+
+@crm_router.callback_query(F.data.startswith("evst:"))
+async def set_event_status(callback: types.CallbackQuery):
+    """Изменить статус события (done/missed)"""
+    parts = callback.data.split(":")
+    new_status = parts[1]
+    event_id = int(parts[2])
+    company_id = getattr(callback.bot, 'company_id', 1)
+    
+    async with aiohttp.ClientSession() as session:
+        await session.patch(
+            f'{API_BASE_URL}/crm/{company_id}/events/{event_id}',
+            json={'status': new_status}
+        )
+    
+    status_names = {'done': '✅ Выполнено', 'missed': '⚠️ Не выполнено'}
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="« К событиям", callback_data="back_ev_list")]
+    ])
+    await callback.message.edit_text(f"Событие #{event_id} — {status_names.get(new_status, new_status)}", reply_markup=kb)
+    await callback.answer()
+
+
+@crm_router.callback_query(F.data.startswith("ev_history:"))
+async def show_event_history(callback: types.CallbackQuery):
+    """История событий"""
+    offset = int(callback.data.split(":")[1])
+    company_id = getattr(callback.bot, 'company_id', 1)
+    user_id = callback.from_user.id
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.get(f'{API_BASE_URL}/crm/{company_id}/events/history?user_id={user_id}&offset={offset}&limit=5') as resp:
+            events = await resp.json() if resp.status == 200 else []
+    
+    type_icons = {'call': '📞', 'meeting': '🤝', 'email': '📧', 'task': '📋'}
+    status_icons = {'done': '✅', 'missed': '⚠️', 'cancelled': '❌'}
+    
+    if events:
+        text = "<b>📜 История событий:</b>\n\n"
+        for ev in events[:5]:
+            icon = type_icons.get(ev.get('event_type', ''), '📅')
+            st_icon = status_icons.get(ev.get('status', ''), '❓')
+            sched = ev.get('scheduled_at', '')[:10]
+            date_fmt = f"{sched[8:10]}.{sched[5:7]}.{sched[:4]}" if sched else ""
+            client = (ev.get('client_name') or 'Личное')[:15]
+            text += f"{st_icon}{icon} {date_fmt} — {client}\n"
+    else:
+        text = "<b>📜 История пуста</b>"
+    
+    page = (offset // 5) + 1
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="◀️", callback_data=f"ev_history:{max(0,offset-5)}"),
+         InlineKeyboardButton(text=f"стр.{page}", callback_data="ev_ign"),
+         InlineKeyboardButton(text="▶️", callback_data=f"ev_history:{offset+5}")],
+        [InlineKeyboardButton(text="« Назад", callback_data="back_ev_list")]
+    ])
+    await callback.message.edit_text(text, parse_mode='HTML', reply_markup=kb)
     await callback.answer()
 

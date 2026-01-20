@@ -740,6 +740,38 @@ async def get_user_events(company_id: int, user_id: int = None, offset: int = 0,
         return events
 
 
+
+
+@router.get("/{company_id}/events/history")
+async def get_events_history(company_id: int, user_id: int = None, offset: int = 0, limit: int = 50):
+    """Get completed/missed events"""
+    async with get_db_session() as db:
+        query = """
+            SELECT e.id, e.lead_id, e.event_type, e.title, e.description, 
+                   e.scheduled_at, e.status, l.contact_info
+            FROM lead_events_schedule e
+            LEFT JOIN leads l ON e.lead_id = l.id
+            WHERE e.company_id = :cid AND e.status IN ('done', 'missed', 'cancelled')
+        """
+        params = {'cid': company_id}
+        if user_id:
+            query += " AND e.user_id = :uid"
+            params['uid'] = user_id
+        query += " ORDER BY e.scheduled_at DESC LIMIT :lim OFFSET :off"
+        params['lim'] = limit
+        params['off'] = offset
+        
+        result = await db.execute(text(query), params)
+        events = []
+        for r in result.fetchall():
+            contact = r[7] or {}
+            events.append({
+                'id': r[0], 'lead_id': r[1], 'event_type': r[2], 'title': r[3],
+                'description': r[4], 'scheduled_at': str(r[5]), 'status': r[6],
+                'client_name': contact.get('name', 'Клиент')
+            })
+        return events
+
 @router.get("/{company_id}/leads/{lead_id}/events")
 async def get_lead_events(company_id: int, lead_id: int):
     """Get events for specific lead"""
