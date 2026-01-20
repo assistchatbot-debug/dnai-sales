@@ -702,7 +702,7 @@ async def create_event(company_id: int, data: dict = Body(...)):
 
 
 @router.get("/{company_id}/events")
-async def get_user_events(company_id: int, user_id: int = None):
+async def get_user_events(company_id: int, user_id: int = None, offset: int = 0, limit: int = 50, event_type: str = None):
     """Get events for user"""
     async with get_db_session() as db:
         query = """
@@ -716,7 +716,12 @@ async def get_user_events(company_id: int, user_id: int = None):
         if user_id:
             query += " AND e.user_id = :uid"
             params['uid'] = user_id
-        query += " ORDER BY e.scheduled_at"
+        if event_type:
+            query += " AND e.event_type = :etype"
+            params['etype'] = event_type
+        query += " ORDER BY e.scheduled_at LIMIT :lim OFFSET :off"
+        params['lim'] = limit
+        params['off'] = offset
         
         result = await db.execute(text(query), params)
         events = []

@@ -27,7 +27,8 @@ def get_manager_keyboard():
     """Manager keyboard - NO Menu button"""
     return ReplyKeyboardMarkup(keyboard=[
         [KeyboardButton(text="📋 Лиды"), KeyboardButton(text="📁 Мои лиды")],
-        [KeyboardButton(text="📊 Мой рейтинг"), KeyboardButton(text="🏆 Лидерборд")]
+        [KeyboardButton(text="📊 Мой рейтинг"), KeyboardButton(text="🏆 Лидерборд")],
+        [KeyboardButton(text="📅 События")]
     ], resize_keyboard=True)
 
 async def get_manager_fullname(company_id: int, user_id: int) -> str:
@@ -166,6 +167,19 @@ def format_lead_card(lead: dict, statuses: list = None) -> str:
             date = (note.get('created_at') or '')[:10]
             text = (note.get('content') or '')[:50]
             card += f"\n• {date} {author}:\n  {text}"
+    
+    # Показать события лида
+    events = lead.get('events', [])
+    if events:
+        card += "\n\n<b>📅 Предстоящие события:</b>"
+        type_icons = {'call': '📞', 'meeting': '🤝', 'email': '📧', 'task': '📋'}
+        for ev in events[:3]:
+            icon = type_icons.get(ev.get('event_type', ''), '📅')
+            sched = ev.get('scheduled_at', '')[:16].replace('T', ' ') if ev.get('scheduled_at') else ''
+            desc = (ev.get('description') or '')[:30]
+            card += f"\n{icon} {sched}"
+            if desc:
+                card += f" — {desc}"
     
     return card
 
@@ -1041,7 +1055,7 @@ async def save_event(callback: types.CallbackQuery, state: FSMContext):
             async with session.post(
                 f'{API_BASE_URL}/crm/{company_id}/events',
                 json={
-                    'lead_id': int(data['event_lead_id']),
+                    'lead_id': int(data['event_lead_id']) if data.get('event_lead_id') else None,
                     'user_id': callback.from_user.id,
                     'event_type': data['event_type'],
                     'description': data.get('event_description', ''),
@@ -1342,3 +1356,192 @@ async def save_event_done(callback: types.CallbackQuery):
     event_id = int(callback.data.split(":")[1])
     await callback.message.edit_text(f"✅ Событие #{event_id} сохранено!")
     await callback.answer()
+
+
+
+
+# ========== МЕНЮ СОБЫТИЯ (v2) ==========
+
+@crm_router.message(F.text == "📅 События")
+async def show_events_menu(message: types.Message):
+    """Показать меню событий - компактно"""
+    await show_events_list(message, offset=0, filter_type=None, filter_period=None)
+
+
+async def show_events_list(msg_or_cb, offset=0, filter_type=None, filter_period=None):
+    """Показать список событий с фильтрами"""
+    if hasattr(msg_or_cb, 'bot'):
+        company_id = getattr(msg_or_cb.bot, 'company_id', 1)
+        user_id = msg_or_cb.from_user.id
+    else:
+        company_id = getattr(msg_or_cb.message.bot, 'company_id', 1)
+        user_id = msg_or_cb.from_user.id
+    
+    # Получаем события
+    url = f'{API_BASE_URL}/crm/{company_id}/events?user_id={user_id}&offset={offset}&limit=5'
+    if filter_type:
+        url += f'&event_type={filter_type}'
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            events = await resp.json() if resp.status == 200 else []
+    
+    # Фильтр по периоду (клиентская сторона пока)
+    from datetime import datetime, timedelta
+    if filter_period == 'today':
+        today = datetime.now().date().isoformat()
+        events = [e for e in events if e.get('scheduled_at', '')[:10] == today]
+    elif filter_period == 'week':
+        week_end = (datetime.now() + timedelta(days=7)).date().isoformat()
+        events = [e for e in events if e.get('scheduled_at', '')[:10] <= week_end]
+    
+    type_icons = {'call': '📞', 'meeting': '🤝', 'email': '📧', 'task': '📋'}
+    buttons = []
+    
+    # Каждое событие — одна кнопка
+    for ev in events[:5]:
+        eid = ev.get('id')
+        icon = type_icons.get(ev.get('event_type', ''), '📅')
+        sched = ev.get('scheduled_at', '')[:16].replace('T', ' ') if ev.get('scheduled_at') else ''
+        client = (ev.get('client_name') or 'Без лида')[:15]
+        desc = (ev.get('description') or '')[:15]
+        # Формат: 20.01.2026 Клиент
+        date_part = sched[:10] if sched else ""
+        if date_part:
+            # YYYY-MM-DD -> DD.MM.YYYY
+            date_formatted = f"{date_part[8:10]}.{date_part[5:7]}.{date_part[:4]}"
+        else:
+            date_formatted = ""
+        btn_text = f"{icon} {date_formatted} {client}"
+        # Описание не нужно в кнопке
+        buttons.append([InlineKeyboardButton(text=btn_text[:40], callback_data=f"view_ev:{eid}")])
+    
+    # Пагинация
+    page = (offset // 5) + 1
+    nav_row = [
+        InlineKeyboardButton(text="◀️", callback_data=f"evp:{max(0,offset-5)}:{filter_type or ''}:{filter_period or ''}"),
+        InlineKeyboardButton(text=f"стр.{page}", callback_data="ev_ign"),
+        InlineKeyboardButton(text="▶️", callback_data=f"evp:{offset+5}:{filter_type or ''}:{filter_period or ''}")
+    ]
+    buttons.append(nav_row)
+    
+    # Фильтры по типу
+    type_row = [
+        InlineKeyboardButton(text="📞" + ("✓" if filter_type=='call' else ""), callback_data=f"evf:call:{filter_period or ''}"),
+        InlineKeyboardButton(text="🤝" + ("✓" if filter_type=='meeting' else ""), callback_data=f"evf:meeting:{filter_period or ''}"),
+        InlineKeyboardButton(text="📧" + ("✓" if filter_type=='email' else ""), callback_data=f"evf:email:{filter_period or ''}"),
+        InlineKeyboardButton(text="📋" + ("✓" if filter_type=='task' else ""), callback_data=f"evf:task:{filter_period or ''}"),
+        InlineKeyboardButton(text="Все", callback_data=f"evf::{filter_period or ''}")
+    ]
+    buttons.append(type_row)
+    
+    # Фильтры по периоду
+    period_row = [
+        InlineKeyboardButton(text="Сегодня" + ("✓" if filter_period=='today' else ""), callback_data=f"evd:today:{filter_type or ''}"),
+        InlineKeyboardButton(text="Неделя" + ("✓" if filter_period=='week' else ""), callback_data=f"evd:week:{filter_type or ''}"),
+        InlineKeyboardButton(text="Все" + ("✓" if not filter_period else ""), callback_data=f"evd::{filter_type or ''}")
+    ]
+    buttons.append(period_row)
+    
+    # Создать событие
+    buttons.append([InlineKeyboardButton(text="➕ Создать событие", callback_data="create_ev_menu")])
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
+    text = "<b>📅 Мои события</b>" if events else "<b>📅 Нет событий</b>"
+    
+    if hasattr(msg_or_cb, 'message'):
+        await msg_or_cb.message.edit_text(text, parse_mode='HTML', reply_markup=kb)
+    else:
+        await msg_or_cb.answer(text, parse_mode='HTML', reply_markup=kb)
+
+
+@crm_router.callback_query(F.data.startswith("evp:"))
+async def events_page(callback: types.CallbackQuery):
+    """Пагинация"""
+    parts = callback.data.split(":")
+    offset = int(parts[1])
+    ftype = parts[2] if len(parts) > 2 and parts[2] else None
+    fperiod = parts[3] if len(parts) > 3 and parts[3] else None
+    await show_events_list(callback, offset, ftype, fperiod)
+    await callback.answer()
+
+
+@crm_router.callback_query(F.data.startswith("evf:"))
+async def events_filter_type(callback: types.CallbackQuery):
+    """Фильтр по типу"""
+    parts = callback.data.split(":")
+    ftype = parts[1] if parts[1] else None
+    fperiod = parts[2] if len(parts) > 2 and parts[2] else None
+    await show_events_list(callback, 0, ftype, fperiod)
+    await callback.answer()
+
+
+@crm_router.callback_query(F.data.startswith("evd:"))
+async def events_filter_period(callback: types.CallbackQuery):
+    """Фильтр по периоду"""
+    parts = callback.data.split(":")
+    fperiod = parts[1] if parts[1] else None
+    ftype = parts[2] if len(parts) > 2 and parts[2] else None
+    await show_events_list(callback, 0, ftype, fperiod)
+    await callback.answer()
+
+
+@crm_router.callback_query(F.data == "ev_ign")
+async def ev_ignore(callback: types.CallbackQuery):
+    await callback.answer()
+
+
+@crm_router.callback_query(F.data.startswith("view_ev:"))
+async def view_event_detail(callback: types.CallbackQuery):
+    """Просмотр события"""
+    event_id = int(callback.data.split(":")[1])
+    company_id = getattr(callback.bot, 'company_id', 1)
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.get(f'{API_BASE_URL}/crm/{company_id}/events') as resp:
+            events = await resp.json() if resp.status == 200 else []
+            ev = next((e for e in events if e.get('id') == event_id), None)
+    
+    if ev:
+        types_map = {'call': '📞 Звонок', 'meeting': '🤝 Встреча', 'email': '📧 Письмо', 'task': '📋 Задача'}
+        icon = types_map.get(ev.get('event_type', ''), '📅 Событие')
+        sched = ev.get('scheduled_at', '')[:16].replace('T', ' ')
+        client = ev.get('client_name') or 'Без лида'
+        desc = ev.get('description') or ''
+        
+        text = f"<b>📅 Событие #{event_id}</b>\n\n{icon}\n📅 {sched}\n👤 {client}"
+        if desc:
+            text += f"\n📝 {desc}"
+        
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✏️ Редактировать", callback_data=f"edit_event:{event_id}"),
+             InlineKeyboardButton(text="🗑 Удалить", callback_data=f"del_event:{event_id}")],
+            [InlineKeyboardButton(text="« Назад", callback_data="back_ev_list")]
+        ])
+        await callback.message.edit_text(text, parse_mode='HTML', reply_markup=kb)
+    else:
+        await callback.message.edit_text("❌ Событие не найдено")
+    await callback.answer()
+
+
+@crm_router.callback_query(F.data == "back_ev_list")
+async def back_events_list(callback: types.CallbackQuery):
+    await show_events_list(callback, 0, None, None)
+    await callback.answer()
+
+
+@crm_router.callback_query(F.data == "create_ev_menu")
+async def create_event_from_menu(callback: types.CallbackQuery, state: FSMContext):
+    """Создать событие из меню (без лида)"""
+    await state.update_data(lead_id=None, from_menu=True)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📞 Звонок", callback_data="etype:call")],
+        [InlineKeyboardButton(text="🤝 Встреча", callback_data="etype:meeting")],
+        [InlineKeyboardButton(text="📧 Письмо", callback_data="etype:email")],
+        [InlineKeyboardButton(text="📋 Задача", callback_data="etype:task")],
+        [InlineKeyboardButton(text="« Отмена", callback_data="back_ev_list")]
+    ])
+    await callback.message.edit_text("📅 Выберите тип:", reply_markup=kb)
+    await state.set_state(EventStates.selecting_type)
+    await callback.answer()
+
