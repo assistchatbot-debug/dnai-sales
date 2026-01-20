@@ -939,27 +939,11 @@ async def minute_scroll(callback: types.CallbackQuery, state: FSMContext):
 
 @crm_router.callback_query(F.data.startswith("cal_minok:"))
 async def minute_confirmed(callback: types.CallbackQuery, state: FSMContext):
-    """Minute confirmed - show description options or update event if editing"""
+    """Minute confirmed - show description options"""
     minute = int(callback.data.split(":")[1])
     data = await state.get_data()
     scheduled_at = f"{data['selected_date']}T{data['selected_hour']:02d}:{minute:02d}:00"
     await state.update_data(scheduled_at=scheduled_at, selected_minute=minute)
-    
-    # Если редактируем существующее событие
-    if data.get('is_editing') and data.get('editing_event_id'):
-        event_id = data.get('editing_event_id')
-        company_id = getattr(callback.bot, 'company_id', 1)
-        async with aiohttp.ClientSession() as session:
-            await session.patch(f'{API_BASE_URL}/crm/{company_id}/events/{event_id}', json={'scheduled_at': scheduled_at})
-        await state.clear()
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✏️ Редактировать", callback_data=f"edit_event:{event_id}"),
-             InlineKeyboardButton(text="🗑 Удалить", callback_data=f"del_event:{event_id}")],
-            [InlineKeyboardButton(text="✅ Сохранить", callback_data=f"save_event:{event_id}")]
-        ])
-        await callback.message.edit_text(f"✅ Дата/время изменено!", reply_markup=kb)
-        await callback.answer()
-        return
     
     event_type = EVENT_TYPES.get(data.get('event_type', ''), '📋 Событие')
     date_str = data.get('selected_date', '')
@@ -1051,19 +1035,11 @@ async def save_event(callback: types.CallbackQuery, state: FSMContext):
             ) as resp:
                 if resp.status == 200:
                     event_type = EVENT_TYPES.get(data['event_type'], data['event_type'])
-                    result = await resp.json()
-                    event_id = result.get('id', 0)
-                    kb = InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="✏️ Редактировать", callback_data=f"edit_event:{event_id}"),
-                         InlineKeyboardButton(text="🗑 Удалить", callback_data=f"del_event:{event_id}")],
-                        [InlineKeyboardButton(text="✅ Сохранить", callback_data=f"save_event:{event_id}")]
-                    ])
                     await callback.message.edit_text(
                         f"✅ Событие создано!\n\n"
                         f"{event_type}\n"
                         f"📅 {data.get('selected_date', '')[8:10]}.{data.get('selected_date', '')[5:7]}.{data.get('selected_date', '')[:4]} {data.get('selected_hour', 0):02d}:{data.get('selected_minute', 0):02d}\n"
-                        f"⏰ Напоминание за {remind} мин",
-                        reply_markup=kb
+                        f"⏰ Напоминание за {remind} мин"
                     )
                 else:
                     await callback.message.edit_text("❌ Ошибка создания события")
@@ -1170,175 +1146,3 @@ async def delete_event(callback: types.CallbackQuery):
     # Обновить список
     await callback.message.delete()
 
-
-
-
-# ========== EVENT EDIT/DELETE/SAVE HANDLERS ==========
-
-@crm_router.callback_query(F.data.startswith("edit_event:"))
-async def edit_event_menu(callback: types.CallbackQuery):
-    """Меню редактирования события"""
-    event_id = int(callback.data.split(":")[1])
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎯 Тип", callback_data=f"eedit_type:{event_id}")],
-        [InlineKeyboardButton(text="📅 Дата/время", callback_data=f"eedit_dt:{event_id}")],
-        [InlineKeyboardButton(text="📝 Описание", callback_data=f"eedit_desc:{event_id}")],
-        [InlineKeyboardButton(text="⏰ Напоминание", callback_data=f"eedit_rem:{event_id}")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_event:{event_id}")]
-    ])
-    await callback.message.edit_text("✏️ Что изменить?", reply_markup=kb)
-    await callback.answer()
-
-@crm_router.callback_query(F.data.startswith("back_event:"))
-async def back_to_event(callback: types.CallbackQuery):
-    """Назад к событию"""
-    event_id = int(callback.data.split(":")[1])
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✏️ Редактировать", callback_data=f"edit_event:{event_id}"),
-         InlineKeyboardButton(text="🗑 Удалить", callback_data=f"del_event:{event_id}")],
-        [InlineKeyboardButton(text="✅ Сохранить", callback_data=f"save_event:{event_id}")]
-    ])
-    await callback.message.edit_text(f"📅 Событие #{event_id}", reply_markup=kb)
-    await callback.answer()
-
-@crm_router.callback_query(F.data.startswith("eedit_type:"))
-async def edit_event_type(callback: types.CallbackQuery):
-    """Изменить тип события"""
-    event_id = int(callback.data.split(":")[1])
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📞 Звонок", callback_data=f"eset_type:call:{event_id}")],
-        [InlineKeyboardButton(text="🤝 Встреча", callback_data=f"eset_type:meeting:{event_id}")],
-        [InlineKeyboardButton(text="📧 Письмо", callback_data=f"eset_type:email:{event_id}")],
-        [InlineKeyboardButton(text="📋 Задача", callback_data=f"eset_type:task:{event_id}")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_event:{event_id}")]
-    ])
-    await callback.message.edit_text("🎯 Выберите тип:", reply_markup=kb)
-    await callback.answer()
-
-@crm_router.callback_query(F.data.startswith("eset_type:"))
-async def set_event_type(callback: types.CallbackQuery):
-    """Сохранить тип события"""
-    parts = callback.data.split(":")
-    new_type, event_id = parts[1], int(parts[2])
-    company_id = getattr(callback.bot, 'company_id', 1)
-    async with aiohttp.ClientSession() as session:
-        await session.patch(f'{API_BASE_URL}/crm/{company_id}/events/{event_id}', json={'event_type': new_type})
-    types_map = {'call': '📞 Звонок', 'meeting': '🤝 Встреча', 'email': '📧 Письмо', 'task': '📋 Задача'}
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✏️ Редактировать", callback_data=f"edit_event:{event_id}"),
-         InlineKeyboardButton(text="🗑 Удалить", callback_data=f"del_event:{event_id}")],
-        [InlineKeyboardButton(text="✅ Сохранить", callback_data=f"save_event:{event_id}")]
-    ])
-    await callback.message.edit_text(f"✅ Тип изменён на {types_map.get(new_type, new_type)}!", reply_markup=kb)
-    await callback.answer()
-
-@crm_router.callback_query(F.data.startswith("eedit_dt:"))
-async def edit_event_dt(callback: types.CallbackQuery, state: FSMContext):
-    """Изменить дату/время через календарь"""
-    event_id = int(callback.data.split(":")[1])
-    await state.set_state(EventStates.selecting_date)
-    await state.update_data(editing_event_id=event_id, is_editing=True)
-    kb = get_calendar()
-    await callback.message.edit_text("📅 Выберите новую дату:", reply_markup=kb)
-    await callback.answer()
-
-@crm_router.callback_query(F.data.startswith("eedit_desc:"))
-async def edit_event_desc(callback: types.CallbackQuery, state: FSMContext):
-    """Изменить описание"""
-    event_id = int(callback.data.split(":")[1])
-    await state.set_state(EventStates.editing_description)
-    await state.update_data(editing_event_id=event_id)
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💾 Сохранить пустым", callback_data=f"edesc_empty:{event_id}")]
-    ])
-    await callback.message.edit_text("📝 Введите новое описание:", reply_markup=kb)
-    await callback.answer()
-
-@crm_router.message(EventStates.editing_description)
-async def process_desc_edit(message: types.Message, state: FSMContext):
-    """Сохранить описание"""
-    data = await state.get_data()
-    event_id = data.get('editing_event_id')
-    company_id = getattr(message.bot, 'company_id', 1)
-    async with aiohttp.ClientSession() as session:
-        await session.patch(f'{API_BASE_URL}/crm/{company_id}/events/{event_id}', json={'description': message.text or ''})
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✏️ Редактировать", callback_data=f"edit_event:{event_id}"),
-         InlineKeyboardButton(text="🗑 Удалить", callback_data=f"del_event:{event_id}")],
-        [InlineKeyboardButton(text="✅ Сохранить", callback_data=f"save_event:{event_id}")]
-    ])
-    await message.answer("✅ Описание обновлено!", reply_markup=kb)
-    await state.clear()
-
-@crm_router.callback_query(F.data.startswith("edesc_empty:"))
-async def save_empty_desc(callback: types.CallbackQuery, state: FSMContext):
-    """Сохранить пустое описание"""
-    event_id = int(callback.data.split(":")[1])
-    company_id = getattr(callback.bot, 'company_id', 1)
-    async with aiohttp.ClientSession() as session:
-        await session.patch(f'{API_BASE_URL}/crm/{company_id}/events/{event_id}', json={'description': ''})
-    await state.clear()
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✏️ Редактировать", callback_data=f"edit_event:{event_id}"),
-         InlineKeyboardButton(text="🗑 Удалить", callback_data=f"del_event:{event_id}")],
-        [InlineKeyboardButton(text="✅ Сохранить", callback_data=f"save_event:{event_id}")]
-    ])
-    await callback.message.edit_text("✅ Описание очищено!", reply_markup=kb)
-    await callback.answer()
-
-@crm_router.callback_query(F.data.startswith("eedit_rem:"))
-async def edit_event_rem(callback: types.CallbackQuery):
-    """Изменить напоминание"""
-    event_id = int(callback.data.split(":")[1])
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="15м", callback_data=f"eset_rem:15:{event_id}"),
-         InlineKeyboardButton(text="30м", callback_data=f"eset_rem:30:{event_id}"),
-         InlineKeyboardButton(text="60м", callback_data=f"eset_rem:60:{event_id}")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_event:{event_id}")]
-    ])
-    await callback.message.edit_text("⏰ За сколько напомнить?", reply_markup=kb)
-    await callback.answer()
-
-@crm_router.callback_query(F.data.startswith("eset_rem:"))
-async def set_event_rem(callback: types.CallbackQuery):
-    """Сохранить напоминание"""
-    parts = callback.data.split(":")
-    mins, event_id = int(parts[1]), int(parts[2])
-    company_id = getattr(callback.bot, 'company_id', 1)
-    async with aiohttp.ClientSession() as session:
-        await session.patch(f'{API_BASE_URL}/crm/{company_id}/events/{event_id}', json={'remind_before_minutes': mins})
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✏️ Редактировать", callback_data=f"edit_event:{event_id}"),
-         InlineKeyboardButton(text="🗑 Удалить", callback_data=f"del_event:{event_id}")],
-        [InlineKeyboardButton(text="✅ Сохранить", callback_data=f"save_event:{event_id}")]
-    ])
-    await callback.message.edit_text(f"✅ Напоминание: за {mins} мин", reply_markup=kb)
-    await callback.answer()
-
-@crm_router.callback_query(F.data.startswith("del_event:"))
-async def del_event_confirm(callback: types.CallbackQuery):
-    """Подтверждение удаления"""
-    event_id = int(callback.data.split(":")[1])
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"del_yes:{event_id}"),
-         InlineKeyboardButton(text="❌ Нет", callback_data=f"back_event:{event_id}")]
-    ])
-    await callback.message.edit_text(f"🗑 Удалить событие #{event_id}?", reply_markup=kb)
-    await callback.answer()
-
-@crm_router.callback_query(F.data.startswith("del_yes:"))
-async def del_event_yes(callback: types.CallbackQuery):
-    """Удалить событие"""
-    event_id = int(callback.data.split(":")[1])
-    company_id = getattr(callback.bot, 'company_id', 1)
-    async with aiohttp.ClientSession() as session:
-        await session.delete(f'{API_BASE_URL}/crm/{company_id}/events/{event_id}')
-    await callback.message.edit_text(f"✅ Событие #{event_id} удалено!")
-    await callback.answer()
-
-@crm_router.callback_query(F.data.startswith("save_event:"))
-async def save_event_done(callback: types.CallbackQuery):
-    """Сохранить событие - завершение"""
-    event_id = int(callback.data.split(":")[1])
-    await callback.message.edit_text(f"✅ Событие #{event_id} сохранено!")
-    await callback.answer()

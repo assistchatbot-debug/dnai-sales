@@ -1,0 +1,80 @@
+"""Configuration from Database for H&B Technology"""
+import os
+import httpx
+from loguru import logger
+
+class Settings:
+    def __init__(self):
+        self.company_id = 7
+        self.api_base_url = os.getenv('API_BASE_URL', 'http://localhost:8005')
+        self.database_url = os.getenv('DATABASE_URL', '')
+        self.sync_schedule_hour = 3  # Default: 3 AM
+        self.sync_schedule_minute = 0
+        self.log_level = 'INFO'  # Default log level
+        self._load_from_database()
+    
+    def _load_from_database(self):
+        try:
+            logger.info(f"🔍 Loading from DB for company_id={self.company_id}...")
+            response = httpx.get(f'{self.api_base_url}/sales/companies/all', timeout=10.0)
+            
+            if response.status_code == 200:
+                companies = response.json()
+                logger.info(f"📊 Found {len(companies)} companies total")
+                company = next((c for c in companies if c['id'] == self.company_id), None)
+                
+                if company:
+                    logger.info(f"✅ Found company: {company.get('name')}")
+                    logger.info(f"   Integration enabled: {company.get('integration_enabled')}")
+                    logger.info(f"   Integration type: {company.get('integration_type')}")
+                    
+                    if company.get('integration_enabled'):
+                        self.bitrix24_webhook_url = company.get('bitrix24_webhook_url', '')
+                        self.onec_base_url = company.get('onec_base_url', '')
+                        self.onec_username = company.get('onec_username', '')
+                        self.onec_password = company.get('onec_password', '')
+                        self.telegram_bot_token = company.get('bot_token', '')
+                        self.telegram_chat_id = company.get('manager_chat_id', 0)
+                        logger.success(f"✅ Loaded from DB successfully!")
+                        logger.info(f"   Bitrix24: {self.bitrix24_webhook_url[:50]}...")
+                        logger.info(f"   1C: {self.onec_base_url}")
+                        return
+                    else:
+                        logger.warning("⚠️ Integration disabled in DB, using fallback")
+                else:
+                    logger.error(f"❌ Company {self.company_id} not found in DB")
+            else:
+                logger.error(f"❌ API returned status {response.status_code}")
+            
+            self._load_fallback()
+        except Exception as e:
+            logger.error(f"❌ DB load failed: {e}")
+            self._load_fallback()
+    
+    def _load_fallback(self):
+        logger.warning("⚠️ Using empty fallback - middleware will NOT work!")
+        self.bitrix24_webhook_url = ''
+        self.onec_base_url = ''
+        self.onec_username = ''
+        self.onec_password = ''
+        self.telegram_bot_token = ''
+        self.telegram_chat_id = 0
+
+
+    def is_integration_enabled(self) -> bool:
+        """Проверка integration_enabled в реальном времени из БД"""
+        try:
+            import httpx
+            response = httpx.get(f'{self.api_base_url}/sales/companies/all', timeout=3.0)
+            if response.status_code == 200:
+                companies = response.json()
+                company = next((c for c in companies if c['id'] == self.company_id), None)
+                if company:
+                    enabled = company.get('integration_enabled', False)
+                    logger.debug(f"integration_enabled = {enabled}")
+                    return enabled
+        except Exception as e:
+            logger.error(f"Ошибка проверки integration_enabled: {e}")
+            return False
+        return False
+settings = Settings()

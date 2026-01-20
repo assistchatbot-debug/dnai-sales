@@ -1,0 +1,214 @@
+"""Клиент для работы с 1С через OData"""
+import httpx
+import re
+from typing import Dict, List, Optional
+from loguru import logger
+from config import settings
+from datetime import datetime
+
+
+class OneCClient:
+    ORGANIZATION_KEY = "156d4f37-4e45-11ea-8d1d-84a93e69ebd9"
+    WAREHOUSE_KEY = "1b77d3ec-4e45-11ea-8d1d-84a93e69ebd9"
+    CURRENCY_KEY = "156d4f36-4e45-11ea-8d1d-84a93e69ebd9"
+    UNIT_KEY = "1b77d40c-4e45-11ea-8d1d-84a93e69ebd9"
+    DEFAULT_KONTRAGENT_KEY = "4ebe3b87-c5f6-11f0-9902-c8d9d2344d9e"
+    DEFAULT_NDS_KEY = "156d4f18-4e45-11ea-8d1d-84a93e69ebd9"  # Ставка НДС
+    
+    def __init__(self):
+        self.base_url = settings.onec_base_url.rstrip('/')
+        self.username = settings.onec_username
+        self.password = settings.onec_password
+        self.odata_url = f"{self.base_url}/odata/standard.odata"
+        self.client = httpx.AsyncClient(timeout=60.0, auth=(self.username, self.password))
+
+    async def find_invoice_by_deal_id(self, deal_id: str) -> Optional[str]:
+        """Найти накладную по ID сделки в комментарии 1С"""
+        try:
+            from urllib.parse import quote
+            search_text = f"Bitrix24 сделка {deal_id}:"
+            filter_str = f"substringof('{search_text}', Комментарий)"
+            url = f"{self.odata_url}/Document_%D0%A0%D0%B5%D0%B0%D0%BB%D0%B8%D0%B7%D0%B0%D1%86%D0%B8%D1%8F%D0%A2%D0%BE%D0%B2%D0%B0%D1%80%D0%BE%D0%B2%D0%A3%D1%81%D0%BB%D1%83%D0%B3?$filter={quote(filter_str)}&$select=Number&$top=1&$format=json"
+            response = await self.client.get(url)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("value"):
+                    invoice_number = data["value"][0].get("Number")
+                    logger.info(f"✅ Найдена накладная {invoice_number} для сделки {deal_id}")
+                    return invoice_number
+            return None
+        except Exception as e:
+            logger.error(f"Ошибка поиска накладной: {e}")
+            return None
+    
+    async def create_order(self, order_data: Dict) -> Dict:
+        deal_id = order_data.get('deal_id', 'unknown')
+        customer = order_data.get('customer', {})
+        products = order_data.get('products', [])
+        total_amount = order_data.get('total_amount', 0)
+        
+        logger.info(f"Creating order in 1C via OData for deal {deal_id}")
+        
+        customer_name = customer.get('name', 'Клиент Bitrix24')
+        customer_phone = customer.get('phone', '')
+        kontragent_key = await self._find_or_create_kontragent(customer_name, customer_phone)
+        
+        products_xml = ""
+        for i, product in enumerate(products, 1):
+            product_code = product.get('code', '')
+            quantity = product.get('quantity', 1)
+            price = product.get('price', 0)
+            sum_val = quantity * price
+            
+            # Получаем номенклатуру с НДС
+            nom_data = await self._get_nomenclature_by_article(product.get("article", ""))
+            if not nom_data:
+                logger.warning(f"Nomenclature not found for code: {product_code}")
+                continue
+            
+            nomenclature_key = nom_data['ref_key']
+            nds_key = nom_data.get('nds_key', self.DEFAULT_NDS_KEY)
+            
+            # Расчёт НДС 12%
+            nds_rate = 0.12
+            sum_nds = round(sum_val * nds_rate / (1 + nds_rate), 2)
+            
+            products_xml += f'''
+        <d:element m:type="StandardODATA.Document_РеализацияТоваровУслуг_Товары_RowType">
+          <d:LineNumber>{i}</d:LineNumber>
+          <d:Номенклатура_Key>{nomenclature_key}</d:Номенклатура_Key>
+          <d:ЕдиницаИзмерения_Key>{self.UNIT_KEY}</d:ЕдиницаИзмерения_Key>
+          <d:Количество>{quantity}</d:Количество>
+          <d:Коэффициент>1</d:Коэффициент>
+          <d:Цена>{price}</d:Цена>
+          <d:Сумма>{sum_val}</d:Сумма>
+          <d:СтавкаНДС_Key>{nds_key}</d:СтавкаНДС_Key>
+          <d:СуммаНДС>{sum_nds}</d:СуммаНДС>
+        </d:element>'''
+        
+        deal_title = order_data.get("deal_title", "")
+        comment = f"Bitrix24 сделка {deal_id}: {customer_name}, {deal_title}"
+        
+        xml_data = f'''<?xml version="1.0" encoding="utf-8"?>
+<entry xmlns="http://www.w3.org/2005/Atom" xmlns:d="http://schemas.microsoft.com/ado/2007/08/dataservices" xmlns:m="http://schemas.microsoft.com/ado/2007/08/dataservices/metadata">
+  <content type="application/xml">
+    <m:properties>
+      <d:Date>{datetime.now().strftime("%Y-%m-%dT%H:%M:%S")}</d:Date>
+      <d:Организация_Key>{self.ORGANIZATION_KEY}</d:Организация_Key>
+      <d:Контрагент_Key>{kontragent_key}</d:Контрагент_Key>
+      <d:Склад_Key>{self.WAREHOUSE_KEY}</d:Склад_Key>
+      <d:ВалютаДокумента_Key>{self.CURRENCY_KEY}</d:ВалютаДокумента_Key>
+      <d:ВидОперации>ПродажаКомиссия</d:ВидОперации>
+      <d:СуммаДокумента>{total_amount}</d:СуммаДокумента>
+      <d:УчитыватьНДС>true</d:УчитыватьНДС>
+      <d:СуммаВключаетНДС>true</d:СуммаВключаетНДС>
+      <d:Комментарий>{comment}</d:Комментарий>
+      <d:Товары m:type="Collection(StandardODATA.Document_РеализацияТоваровУслуг_Товары_RowType)">{products_xml}
+      </d:Товары>
+    </m:properties>
+  </content>
+</entry>'''
+        
+        url = f"{self.odata_url}/Document_%D0%A0%D0%B5%D0%B0%D0%BB%D0%B8%D0%B7%D0%B0%D1%86%D0%B8%D1%8F%D0%A2%D0%BE%D0%B2%D0%B0%D1%80%D0%BE%D0%B2%D0%A3%D1%81%D0%BB%D1%83%D0%B3"
+        headers = {"Content-Type": "application/atom+xml;type=entry;charset=utf-8", "Accept": "application/atom+xml"}
+        
+        try:
+            response = await self.client.post(url, content=xml_data.encode('utf-8'), headers=headers)
+            if response.status_code == 201:
+                order_number = self._parse_order_number(response.text)
+                order_id = self._parse_order_id(response.text)
+                logger.info(f"Document {order_number} created for deal {deal_id}")
+                return {"success": True, "order_number": order_number, "order_id": order_id, "message": f"Накладная {order_number} создана"}
+            else:
+                logger.error(f"Failed: {response.status_code} - {response.text[:300]}")
+                return {"success": False, "message": f"Ошибка: {response.status_code}"}
+        except Exception as e:
+            logger.error(f"Error: {e}")
+            return {"success": False, "message": str(e)}
+    
+    def _parse_order_number(self, xml_text: str) -> Optional[str]:
+        match = re.search(r'<d:Number>([^<]+)</d:Number>', xml_text)
+        return match.group(1) if match else None
+    
+    def _parse_order_id(self, xml_text: str) -> Optional[str]:
+        match = re.search(r"guid'([^']+)'", xml_text)
+        return match.group(1) if match else None
+    
+    async def _find_or_create_kontragent(self, name: str, phone: str) -> str:
+        if not phone:
+            return self.DEFAULT_KONTRAGENT_KEY
+        
+        phone_digits = re.sub(r'\D', '', phone)
+        if len(phone_digits) < 5:
+            return self.DEFAULT_KONTRAGENT_KEY
+        phone_search = phone_digits[-10:]
+        
+        try:
+            url = f"{self.odata_url}/Catalog_%D0%9A%D0%BE%D0%BD%D1%82%D1%80%D0%B0%D0%B3%D0%B5%D0%BD%D1%82%D1%8B?$filter=substringof('{phone_search}',Комментарий)&$select=Ref_Key&$top=1"
+            response = await self.client.get(url)
+            if response.status_code == 200 and 'Ref_Key' in response.text:
+                match = re.search(r'<d:Ref_Key>([^<]+)</d:Ref_Key>', response.text)
+                if match:
+                    logger.info(f"Found kontragent by phone")
+                    return match.group(1)
+            
+            logger.info(f"Creating new kontragent: {name}")
+            return await self._create_kontragent(name, phone)
+        except Exception as e:
+            logger.error(f"Error finding kontragent: {e}")
+            return self.DEFAULT_KONTRAGENT_KEY
+    
+    async def _create_kontragent(self, name: str, phone: str) -> str:
+        try:
+            xml_data = f'''<?xml version="1.0" encoding="utf-8"?>
+<entry xmlns="http://www.w3.org/2005/Atom" xmlns:d="http://schemas.microsoft.com/ado/2007/08/dataservices" xmlns:m="http://schemas.microsoft.com/ado/2007/08/dataservices/metadata">
+  <content type="application/xml">
+    <m:properties>
+      <d:Description>{name}</d:Description>
+      <d:НаименованиеПолное>{name}</d:НаименованиеПолное>
+      <d:Комментарий>Телефон: {phone} | Создан из Bitrix24</d:Комментарий>
+      <d:ЮрФизЛицо>ФизЛицо</d:ЮрФизЛицо>
+    </m:properties>
+  </content>
+</entry>'''
+            
+            url = f"{self.odata_url}/Catalog_%D0%9A%D0%BE%D0%BD%D1%82%D1%80%D0%B0%D0%B3%D0%B5%D0%BD%D1%82%D1%8B"
+            headers = {"Content-Type": "application/atom+xml;type=entry;charset=utf-8", "Accept": "application/atom+xml"}
+            response = await self.client.post(url, content=xml_data.encode('utf-8'), headers=headers)
+            
+            if response.status_code == 201:
+                match = re.search(r"guid'([^']+)'", response.text)
+                if match:
+                    logger.info(f"Created kontragent: {match.group(1)}")
+                    return match.group(1)
+            return self.DEFAULT_KONTRAGENT_KEY
+        except Exception as e:
+            logger.error(f"Error creating kontragent: {e}")
+            return self.DEFAULT_KONTRAGENT_KEY
+    
+    async def _get_nomenclature_by_article(self, article: str) -> Optional[Dict]:
+        """Получить номенклатуру с НДС"""
+        try:
+            url = f"{self.odata_url}/Catalog_%D0%9D%D0%BE%D0%BC%D0%B5%D0%BD%D0%BA%D0%BB%D0%B0%D1%82%D1%83%D1%80%D0%B0?$filter=Артикул%20eq%20%27{article}%27&$select=Ref_Key,СтавкаНДС_Key"
+            response = await self.client.get(url)
+            if response.status_code == 200 and 'Ref_Key' in response.text:
+                ref_match = re.search(r'<d:Ref_Key>([^<]+)</d:Ref_Key>', response.text)
+                nds_match = re.search(r'<d:СтавкаНДС_Key>([^<]+)</d:СтавкаНДС_Key>', response.text)
+                if ref_match:
+                    return {
+                        'ref_key': ref_match.group(1),
+                        'nds_key': nds_match.group(1) if nds_match else self.DEFAULT_NDS_KEY
+                    }
+            return None
+        except Exception as e:
+            logger.error(f"Error: {e}")
+            return None
+    
+    async def get_stock_balances(self, warehouse: str = None) -> List[Dict]:
+        return []
+    
+    async def get_product_info(self, product_code: str) -> Dict:
+        return {}
+    
+    async def close(self):
+        await self.client.aclose()

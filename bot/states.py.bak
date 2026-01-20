@@ -5,6 +5,7 @@ class SalesFlow(StatesGroup):
     collecting_phone = State()
     waiting_manager_message = State()
 
+
 class ManagerFlow(StatesGroup):
     adding_note = State()
     entering_channel_name = State()
@@ -20,10 +21,8 @@ class ManagerFlow(StatesGroup):
 
 class EventStates(StatesGroup):
     selecting_type = State()
-    selecting_date = State()
-    selecting_hour = State()
-    selecting_minute = State()
+    selecting_date = State()       # Календарь
+    selecting_hour = State()       # Часы
+    selecting_minute = State()     # Минуты
     entering_description = State()
     selecting_reminder = State()
-    editing_datetime = State()
-    editing_description = State()

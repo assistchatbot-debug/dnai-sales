@@ -803,15 +803,3 @@ async def mark_reminder_sent(event_id: int):
         await db.commit()
         return {"status": "ok"}
 
-
-
-@router.delete("/{company_id}/events/{event_id}")
-async def delete_event(company_id: int, event_id: int):
-    """Delete event completely"""
-    async with get_db_session() as db:
-        await db.execute(text("""
-            DELETE FROM lead_events_schedule 
-            WHERE id = :eid AND company_id = :cid
-        """), {'eid': event_id, 'cid': company_id})
-        await db.commit()
-        return {"status": "ok", "deleted": event_id}

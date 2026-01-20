@@ -531,3 +531,39 @@ AI summary генерируется слишком часто. Проверит�
 МУЛЬТИ режим - каждая компания настраивается отдельно
 AI анализ - генерируется из истории диалога и добавляется в комментарий сделки
 Контакт + Сделка - создаются оба объекта, связаны между собой
+
+---
+
+## 🐛 Recent Bug Fixes
+
+### v1.1.0 - Morozov Client (2026-01-20)
+
+**Critical fixes for 1C-Bitrix24 integration:**
+
+#### Problem 1: Duplicate Invoice Creation
+- **Issue:** Each WON deal created 2-3 invoices in 1C
+- **Cause:** Webhook loop - updating `UF_1C_ORDER_ID` triggered new webhooks
+- **Fix:** Added [find_invoice_by_deal_id()](cci:1://file:///C:/Users/Win11PRO/.gemini/antigravity/brain/b7b1322a-334b-47f3-9ce9-74e89d2f745b/onec_client_FIXED.py:25:4-56:23) in [onec_client.py](cci:7://file:///C:/Users/Win11PRO/.gemini/antigravity/scratch/1c-bitrix24-integration/onec_client.py:0:0-0:0) to check existing invoices
+
+#### Problem 2: ON/OFF Required Restart
+- **Issue:** Toggling integration in bot did not work until middleware restart
+- **Cause:** `integration_enabled` loaded only at startup
+- **Fix:** Added `is_integration_enabled()` in [config.py](cci:7://file:///C:/Users/Win11PRO/.gemini/antigravity/scratch/1c-bitrix24-integration/config.py:0:0-0:0) for runtime checks
+
+#### Problem 3: Kaspi-Only Filter
+- **Issue:** Only Kaspi deals with order numbers processed
+- **Fix:** Removed `kaspi_order_number` requirement - now all WON deals processed
+
+**Testing Results:**
+- ✅ Duplicate prevention: Invoice 58 blocked on repeat attempt
+- ✅ ON/OFF toggle: Works instantly without restart  
+- ✅ All deals: Processes all WON deals in category 7
+
+**Files Changed:**
+- `clients/morozov/onec_client.py` - Duplicate detection
+- `clients/morozov/config.py` - Runtime status check
+- `clients/morozov/server.py` - Added protections, removed filter
+- `clients/morozov/README.md` - Client-specific docs
+
+See [clients/morozov/](./clients/morozov/) for implementation details.
+
