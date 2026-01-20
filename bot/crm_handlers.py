@@ -1426,14 +1426,23 @@ async def show_events_list(msg_or_cb, offset=0, filter_type=None, filter_period=
         sched = ev.get('scheduled_at', '')[:16].replace('T', ' ') if ev.get('scheduled_at') else ''
         client = (ev.get('client_name') or 'Без лида')[:15]
         desc = (ev.get('description') or '')[:15]
-        # Формат: 20.01.2026 Клиент
+        # Формат: 20.01.2026 Клиент + 🔁 для recurring + 🏷️ для без лида
         date_part = sched[:10] if sched else ""
         if date_part:
-            # YYYY-MM-DD -> DD.MM.YYYY
             date_formatted = f"{date_part[8:10]}.{date_part[5:7]}.{date_part[:4]}"
         else:
             date_formatted = ""
-        btn_text = f"{icon} {date_formatted} {client}"
+        
+        # Иконка повторения
+        recur_icon = "🔁" if ev.get('is_recurring') else ""
+        
+        # Различие с лидом / без лида
+        if ev.get('lead_id'):
+            client_text = f"👤{client[:12]}"
+        else:
+            client_text = "🏷️Личное"
+        
+        btn_text = f"{recur_icon}{icon} {date_formatted} {client_text}"
         # Описание не нужно в кнопке
         buttons.append([InlineKeyboardButton(text=btn_text[:40], callback_data=f"view_ev:{eid}")])
     
@@ -1446,12 +1455,13 @@ async def show_events_list(msg_or_cb, offset=0, filter_type=None, filter_period=
     ]
     buttons.append(nav_row)
     
-    # Фильтры по типу
+    # Фильтры по типу + recurring
     type_row = [
         InlineKeyboardButton(text="📞" + ("✓" if filter_type=='call' else ""), callback_data=f"evf:call:{filter_period or ''}"),
         InlineKeyboardButton(text="🤝" + ("✓" if filter_type=='meeting' else ""), callback_data=f"evf:meeting:{filter_period or ''}"),
         InlineKeyboardButton(text="📧" + ("✓" if filter_type=='email' else ""), callback_data=f"evf:email:{filter_period or ''}"),
         InlineKeyboardButton(text="📋" + ("✓" if filter_type=='task' else ""), callback_data=f"evf:task:{filter_period or ''}"),
+        InlineKeyboardButton(text="🔁" + ("✓" if filter_type=='recurring' else ""), callback_data=f"evf:recurring:{filter_period or ''}"),
         InlineKeyboardButton(text="Все", callback_data=f"evf::{filter_period or ''}")
     ]
     buttons.append(type_row)
@@ -1530,7 +1540,25 @@ async def view_event_detail(callback: types.CallbackQuery):
         client = ev.get('client_name') or 'Без лида'
         desc = ev.get('description') or ''
         
-        text = f"<b>📅 Событие #{event_id}</b>\n\n{icon}\n📅 {sched}\n👤 {client}"
+        # Формат даты СНГ
+        if sched:
+            date_formatted = f"{sched[8:10]}.{sched[5:7]}.{sched[:4]} {sched[11:16]}"
+        else:
+            date_formatted = sched
+        
+        # Инфо о повторении
+        pattern_names = {'daily': 'Ежедневно', 'weekly': 'Еженедельно', 'monthly': 'Ежемесячно'}
+        recurring_info = ""
+        if ev.get('is_recurring'):
+            recurring_info = f"\n🔁 {pattern_names.get(ev.get('recurring_pattern', ''), 'Да')}"
+        
+        # Различие с/без лида
+        if ev.get('lead_id'):
+            client_line = f"👤 {client}"
+        else:
+            client_line = "🏷️ Личное событие"
+        
+        text = f"<b>📅 Событие #{event_id}</b>\n\n{icon}\n📅 {date_formatted}\n{client_line}{recurring_info}"
         if desc:
             text += f"\n📝 {desc}"
         

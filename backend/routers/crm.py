@@ -702,12 +702,12 @@ async def create_event(company_id: int, data: dict = Body(...)):
 
 
 @router.get("/{company_id}/events")
-async def get_user_events(company_id: int, user_id: int = None, offset: int = 0, limit: int = 50, event_type: str = None):
+async def get_user_events(company_id: int, user_id: int = None, offset: int = 0, limit: int = 50, event_type: str = None, is_recurring: bool = None):
     """Get events for user"""
     async with get_db_session() as db:
         query = """
             SELECT e.id, e.lead_id, e.event_type, e.title, e.description, 
-                   e.scheduled_at, e.status, l.contact_info
+                   e.scheduled_at, e.status, l.contact_info, e.is_recurring, e.recurring_pattern
             FROM lead_events_schedule e
             LEFT JOIN leads l ON e.lead_id = l.id
             WHERE e.company_id = :cid AND e.status = 'pending'
@@ -719,6 +719,9 @@ async def get_user_events(company_id: int, user_id: int = None, offset: int = 0,
         if event_type:
             query += " AND e.event_type = :etype"
             params['etype'] = event_type
+        if is_recurring is not None:
+            query += " AND e.is_recurring = :rec"
+            params['rec'] = is_recurring
         query += " ORDER BY e.scheduled_at LIMIT :lim OFFSET :off"
         params['lim'] = limit
         params['off'] = offset
@@ -730,7 +733,9 @@ async def get_user_events(company_id: int, user_id: int = None, offset: int = 0,
             events.append({
                 'id': r[0], 'lead_id': r[1], 'event_type': r[2], 'title': r[3],
                 'description': r[4], 'scheduled_at': str(r[5]), 'status': r[6],
-                'client_name': contact.get('name', 'Клиент')
+                'client_name': contact.get('name', 'Клиент'),
+                'is_recurring': r[8] if len(r) > 8 else False,
+                'recurring_pattern': r[9] if len(r) > 9 else None
             })
         return events
 
