@@ -27,3 +27,4 @@ class EventStates(StatesGroup):
     selecting_reminder = State()
     editing_datetime = State()
     editing_description = State()
+    selecting_recurring = State()  # For recurring events

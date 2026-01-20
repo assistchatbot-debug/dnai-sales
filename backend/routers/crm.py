@@ -766,6 +766,15 @@ async def update_event(company_id: int, event_id: int, data: dict = Body(...)):
                 UPDATE lead_events_schedule SET scheduled_at = CAST(:time AS TIMESTAMP), reminder_sent = FALSE
                 WHERE id = :eid AND company_id = :cid
             """), {'time': new_time, 'eid': event_id, 'cid': company_id})
+        
+        # Recurring support
+        is_recurring = data.get('is_recurring')
+        recurring_pattern = data.get('recurring_pattern')
+        if is_recurring is not None:
+            await db.execute(text("""
+                UPDATE lead_events_schedule SET is_recurring = :rec, recurring_pattern = :pat
+                WHERE id = :eid AND company_id = :cid
+            """), {'rec': is_recurring, 'pat': recurring_pattern, 'eid': event_id, 'cid': company_id})
         await db.commit()
         return {"status": "ok"}
 

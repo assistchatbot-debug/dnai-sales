@@ -1067,6 +1067,27 @@ async def save_event(callback: types.CallbackQuery, state: FSMContext):
                     event_type = EVENT_TYPES.get(data['event_type'], data['event_type'])
                     result = await resp.json()
                     event_id = result.get('id', 0)
+                    
+                    # Если из меню — спрашиваем про повторение
+                    if data.get('from_menu'):
+                        await state.update_data(created_event_id=event_id)
+                        kb = InlineKeyboardMarkup(inline_keyboard=[
+                            [InlineKeyboardButton(text="🔁 Ежедневно", callback_data=f"recur:daily:{event_id}")],
+                            [InlineKeyboardButton(text="🔁 Еженедельно", callback_data=f"recur:weekly:{event_id}")],
+                            [InlineKeyboardButton(text="🔁 Ежемесячно", callback_data=f"recur:monthly:{event_id}")],
+                            [InlineKeyboardButton(text="❌ Не повторять", callback_data=f"recur:none:{event_id}")]
+                        ])
+                        await callback.message.edit_text(
+                            f"✅ Событие создано!\n\n"
+                            f"{event_type}\n"
+                            f"📅 {data.get('selected_date', '')[8:10]}.{data.get('selected_date', '')[5:7]}.{data.get('selected_date', '')[:4]} "
+                            f"{data.get('selected_hour', 0):02d}:{data.get('selected_minute', 0):02d}\n"
+                            f"⏰ Напоминание за {remind} мин\n\n"
+                            f"🔁 Повторять событие?",
+                            reply_markup=kb
+                        )
+                        await state.clear()
+                        return
                     kb = InlineKeyboardMarkup(inline_keyboard=[
                         [InlineKeyboardButton(text="✏️ Редактировать", callback_data=f"edit_event:{event_id}"),
                          InlineKeyboardButton(text="🗑 Удалить", callback_data=f"del_event:{event_id}")],
@@ -1543,5 +1564,45 @@ async def create_event_from_menu(callback: types.CallbackQuery, state: FSMContex
     ])
     await callback.message.edit_text("📅 Выберите тип:", reply_markup=kb)
     await state.set_state(EventStates.selecting_type)
+    await callback.answer()
+
+
+
+# ========== RECURRING EVENTS ==========
+
+@crm_router.callback_query(F.data.startswith("recur:"))
+async def set_recurring(callback: types.CallbackQuery):
+    """Установить повторение события"""
+    parts = callback.data.split(":")
+    pattern = parts[1]  # daily/weekly/monthly/none
+    event_id = int(parts[2])
+    company_id = getattr(callback.bot, 'company_id', 1)
+    
+    if pattern == "none":
+        # Не повторять — показываем кнопки редактирования
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✏️ Редактировать", callback_data=f"edit_event:{event_id}"),
+             InlineKeyboardButton(text="🗑 Удалить", callback_data=f"del_event:{event_id}")],
+            [InlineKeyboardButton(text="✅ Сохранить", callback_data=f"save_event:{event_id}")]
+        ])
+        await callback.message.edit_text(f"✅ Событие #{event_id} создано!", reply_markup=kb)
+    else:
+        # Устанавливаем повторение в БД
+        async with aiohttp.ClientSession() as session:
+            await session.patch(
+                f'{API_BASE_URL}/crm/{company_id}/events/{event_id}',
+                json={'is_recurring': True, 'recurring_pattern': pattern}
+            )
+        
+        pattern_names = {'daily': 'Ежедневно', 'weekly': 'Еженедельно', 'monthly': 'Ежемесячно'}
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✏️ Редактировать", callback_data=f"edit_event:{event_id}"),
+             InlineKeyboardButton(text="🗑 Удалить", callback_data=f"del_event:{event_id}")],
+            [InlineKeyboardButton(text="✅ Сохранить", callback_data=f"save_event:{event_id}")]
+        ])
+        await callback.message.edit_text(
+            f"✅ Событие #{event_id} создано!\n🔁 Повтор: {pattern_names.get(pattern)}",
+            reply_markup=kb
+        )
     await callback.answer()
 
