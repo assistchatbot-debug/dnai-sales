@@ -715,7 +715,7 @@ async def get_user_events(company_id: int, user_id: int = None, offset: int = 0,
         """
         params = {'cid': company_id}
         if user_id:
-            query += " AND e.user_id = :uid"
+            query += " AND (e.user_id = :uid OR e.created_by_user_id = :uid)"
             params['uid'] = user_id
         if event_type:
             query += " AND e.event_type = :etype"
@@ -756,7 +756,7 @@ async def get_events_history(company_id: int, user_id: int = None, offset: int =
         """
         params = {'cid': company_id}
         if user_id:
-            query += " AND e.user_id = :uid"
+            query += " AND (e.user_id = :uid OR e.created_by_user_id = :uid)"
             params['uid'] = user_id
         query += " ORDER BY e.scheduled_at DESC LIMIT :lim OFFSET :off"
         params['lim'] = limit
