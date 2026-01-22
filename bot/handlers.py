@@ -2153,3 +2153,71 @@ async def show_manager_card(callback: types.CallbackQuery):
     except Exception as e:
         logging.error(f"Manager card error: {e}")
         await callback.answer("❌ Ошибка", show_alert=True)
+# === Обработчики карточки менеджера ===
+
+@router.callback_query(F.data == "back_to_managers")
+async def back_to_managers_list(callback: types.CallbackQuery):
+    """Возврат к списку менеджеров"""
+    company_id = getattr(callback.bot, 'company_id', 1)
+    try:
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f'{API_BASE_URL}/crm/{company_id}/managers') as resp:
+                if resp.status == 200:
+                    managers = await resp.json()
+                    managers = sorted(managers, key=lambda x: x.get('coins', 0), reverse=True)
+                    text_msg = "👥 <b>Менеджеры компании</b>\n\n"
+                    buttons = []
+                    for i, m in enumerate(managers):
+                        name = m.get('full_name', 'Без имени')
+                        coins = m.get('coins', 0)
+                        user_id = m.get('user_id', 0)
+                        medal = ['🥇', '🥈', '🥉'][i] if i < 3 else f"{i+1}."
+                        text_msg += f"{medal} {name} — {coins}💰\n"
+                        buttons.append([InlineKeyboardButton(text=f"📊 {name}", callback_data=f"mgr_card:{user_id}")])
+                    text_msg += "\n<i>Нажмите для просмотра</i>"
+                    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
+                    await callback.message.edit_text(text_msg, parse_mode='HTML', reply_markup=kb)
+    except Exception as e:
+        logging.error(f"Back to managers: {e}")
+
+@router.callback_query(F.data.startswith("create_event_mgr:"))
+async def create_event_for_manager_start(callback: types.CallbackQuery):
+    """Создание события для менеджера"""
+    await callback.answer("🚧 Функция в разработке", show_alert=True)
+
+@router.callback_query(F.data.startswith("delete_mgr_confirm:"))
+async def delete_manager_confirm(callback: types.CallbackQuery):
+    """Подтверждение удаления"""
+    user_id = int(callback.data.split(":")[1])
+    company_id = getattr(callback.bot, 'company_id', 1)
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f'{API_BASE_URL}/crm/{company_id}/managers/{user_id}') as resp:
+                if resp.status == 200:
+                    manager = await resp.json()
+                    name = manager.get('full_name', 'Менеджер')
+                    leads = manager.get('leads_count', 0)
+                    
+                    text = f"""⚠️ <b>Удалить менеджера?</b>
+
+👤 {name}
+📊 Активных лидов: {leads}
+
+Все его лиды станут неназначенными."""
+                    
+                    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                    kb = InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"delete_mgr_do:{user_id}")],
+                        [InlineKeyboardButton(text="❌ Отмена", callback_data=f"mgr_card:{user_id}")]
+                    ])
+                    
+                    await callback.message.edit_text(text, parse_mode='HTML', reply_markup=kb)
+    except Exception as e:
+        logging.error(f"Delete confirm: {e}")
+
+@router.callback_query(F.data.startswith("delete_mgr_do:"))
+async def delete_manager_execute(callback: types.CallbackQuery):
+    """Удаление менеджера"""
+    await callback.answer("🚧 Функция в разработке", show_alert=True)
