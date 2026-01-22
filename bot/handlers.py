@@ -374,7 +374,7 @@ async def process_admin_command(message: types.Message, text: str, state: FSMCon
                                 user_id = m.get('user_id', 0)
                                 medal = ['🥇', '🥈', '🥉'][i] if i < 3 else f"{i+1}."
                                 text_msg += f"{medal} {name} — {coins}💰\n"
-                                buttons.append([InlineKeyboardButton(text=f"📊 {name}", callback_data=f"mgr_kpi:{user_id}")])
+                                buttons.append([InlineKeyboardButton(text=f"📊 {name}", callback_data=f"mgr_card:{user_id}")])
                         else:
                             text_msg += "Пока нет менеджеров\n"
                         text_msg += "\n<i>Нажмите для KPI</i>\n<b>Добавить:</b> /join"
@@ -2117,25 +2117,39 @@ async def handle_internal_crm(callback: types.CallbackQuery):
         )
         await callback.answer()
 
-@router.callback_query(F.data.startswith("mgr_kpi:"))
-async def manager_kpi_callback(callback: types.CallbackQuery):
-    """Show manager KPI for admin"""
+@router.callback_query(F.data.startswith("mgr_card:"))
+async def show_manager_card(callback: types.CallbackQuery):
+    """Карточка менеджера с действиями"""
     user_id = int(callback.data.split(":")[1])
     company_id = getattr(callback.bot, 'company_id', 1)
+    
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(f'{API_BASE_URL}/crm/{company_id}/managers/{user_id}') as resp:
                 if resp.status == 200:
-                    m = await resp.json()
-                    text = f"📊 <b>KPI: {m.get('full_name', '?')}</b>\n\n"
-                    text += f"💰 Монетки: {m.get('coins', 0)}\n"
-                    text += f"📋 Лидов: {m.get('leads_count', 0)}\n"
-                    text += f"✅ Сделок: {m.get('deals_count', 0)}"
-                    await callback.message.answer(text, parse_mode='HTML')
-                    await callback.answer()
+                    manager = await resp.json()
+                    
+                    name = manager.get('full_name', 'Без имени')
+                    username = manager.get('telegram_username', '')
+                    coins = manager.get('coins', 0)
+                    leads_count = manager.get('leads_count', 0)
+                    deals_count = manager.get('deals_count', 0)
+                    
+                    text = f"""👤 <b>{name}</b>
+📞 @{username if username else 'не указан'}
+💰 Монеток: {coins}
+📊 Лидов: {leads_count} | Сделок: {deals_count}"""
+                    
+                    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                    kb = InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text="📅 Создать событие", callback_data=f"create_event_mgr:{user_id}")],
+                        [InlineKeyboardButton(text="🗑 Удалить менеджера", callback_data=f"delete_mgr_confirm:{user_id}")],
+                        [InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_managers")]
+                    ])
+                    
+                    await callback.message.edit_text(text, parse_mode='HTML', reply_markup=kb)
                 else:
-                    await callback.answer("Ошибка", show_alert=True)
+                    await callback.answer("❌ Ошибка загрузки данных", show_alert=True)
     except Exception as e:
-        logging.error(f"KPI error: {e}")
-        await callback.answer("Ошибка", show_alert=True)
-
+        logging.error(f"Manager card error: {e}")
+        await callback.answer("❌ Ошибка", show_alert=True)
