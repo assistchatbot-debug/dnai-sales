@@ -1413,7 +1413,8 @@ async def show_events_list(msg_or_cb, offset=0, filter_type=None, filter_period=
         user_id = msg_or_cb.from_user.id
     
     # Получаем события
-    url = f'{API_BASE_URL}/crm/{company_id}/events?user_id={user_id}&offset={offset}&limit=5'
+    # Админ видит свои события И события которые он создал для менеджеров
+    url = f'{API_BASE_URL}/crm/{company_id}/events?user_id={user_id}&offset={offset}&limit=10'
     if filter_type:
         if filter_type == 'recurring':
             url += '&is_recurring=true'
