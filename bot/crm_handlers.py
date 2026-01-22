@@ -1069,11 +1069,12 @@ async def save_event(callback: types.CallbackQuery, state: FSMContext):
                 f'{API_BASE_URL}/crm/{company_id}/events',
                 json={
                     'lead_id': int(data['event_lead_id']) if data.get('event_lead_id') else None,
-                    'user_id': callback.from_user.id,
+                    'user_id': data.get('target_manager_id') or callback.from_user.id,
                     'event_type': data['event_type'],
                     'description': data.get('event_description', ''),
                     'scheduled_at': data['scheduled_at'],
-                    'remind_before_minutes': remind
+                    'remind_before_minutes': remind,
+                    'created_by_user_id': callback.from_user.id if data.get('target_manager_id') else None
                 }
             ) as resp:
                 if resp.status == 200:
