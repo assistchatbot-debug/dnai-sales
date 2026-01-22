@@ -2207,10 +2207,10 @@ async def create_event_for_manager_start(callback: types.CallbackQuery, state: F
                     # Показываем выбор типа события
                     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
                     kb = InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="📞 Звонок", callback_data="etype:call")],
-                        [InlineKeyboardButton(text="🤝 Встреча", callback_data="etype:meeting")],
-                        [InlineKeyboardButton(text="📧 Email", callback_data="etype:email")],
-                        [InlineKeyboardButton(text="📋 Задача", callback_data="etype:task")]
+                        [InlineKeyboardButton(text="📞 Звонок", callback_data=f"etype_mgr:call:{manager_id}")],
+                        [InlineKeyboardButton(text="🤝 Встреча", callback_data=f"etype_mgr:meeting:{manager_id}")],
+                        [InlineKeyboardButton(text="📧 Email", callback_data=f"etype_mgr:email:{manager_id}")],
+                        [InlineKeyboardButton(text="📋 Задача", callback_data=f"etype_mgr:task:{manager_id}")]
                     ])
                     
                     await callback.message.edit_text(

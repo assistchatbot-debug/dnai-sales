@@ -1718,3 +1718,21 @@ async def show_event_history(callback: types.CallbackQuery):
     await callback.message.edit_text(text, parse_mode='HTML', reply_markup=kb)
     await callback.answer()
 
+
+# === Создание события для менеджера (от админа) ===
+@crm_router.callback_query(F.data.startswith("etype_mgr:"))
+async def select_event_type_for_manager(callback: types.CallbackQuery, state: FSMContext):
+    """Выбор типа события для менеджера"""
+    parts = callback.data.split(":")
+    event_type = parts[1]
+    manager_id = int(parts[2])
+    
+    await state.update_data(
+        event_type=event_type,
+        target_manager_id=manager_id,
+        created_by_admin=True
+    )
+    
+    kb = get_calendar()
+    await callback.message.edit_text("📅 Выберите дату:", reply_markup=kb)
+    await state.set_state(EventStates.selecting_date)
