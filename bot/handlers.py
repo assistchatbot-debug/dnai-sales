@@ -2182,9 +2182,51 @@ async def back_to_managers_list(callback: types.CallbackQuery):
         logging.error(f"Back to managers: {e}")
 
 @router.callback_query(F.data.startswith("create_event_mgr:"))
-async def create_event_for_manager_start(callback: types.CallbackQuery):
+async def create_event_for_manager_start(callback: types.CallbackQuery, state: FSMContext):
     """Создание события для менеджера"""
-    await callback.answer("🚧 Функция в разработке", show_alert=True)
+    manager_id = int(callback.data.split(":")[1])
+    company_id = getattr(callback.bot, 'company_id', 1)
+    
+    try:
+        # Получаем имя менеджера
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f'{API_BASE_URL}/crm/{company_id}/managers/{manager_id}') as resp:
+                if resp.status == 200:
+                    manager = await resp.json()
+                    manager_name = manager.get('full_name', 'Менеджер')
+                    
+                    # Сохраняем данные в state
+                    await state.update_data(
+                        target_manager_id=manager_id,
+                        target_manager_name=manager_name,
+                        created_by_admin=True,
+                        company_id=company_id,
+                        admin_user_id=callback.from_user.id
+                    )
+                    
+                    # Показываем выбор типа события
+                    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                    kb = InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text="📞 Звонок", callback_data="evtype:call")],
+                        [InlineKeyboardButton(text="🤝 Встреча", callback_data="evtype:meeting")],
+                        [InlineKeyboardButton(text="📧 Email", callback_data="evtype:email")],
+                        [InlineKeyboardButton(text="📋 Задача", callback_data="evtype:task")]
+                    ])
+                    
+                    await callback.message.edit_text(
+                        f"📅 <b>Создание события для {manager_name}</b>\n\nВыберите тип:",
+                        parse_mode='HTML',
+                        reply_markup=kb
+                    )
+                    
+                    # Переходим в состояние выбора типа
+                    from states import EventStates
+                    await state.set_state(EventStates.selecting_type)
+                else:
+                    await callback.answer("❌ Ошибка загрузки данных", show_alert=True)
+    except Exception as e:
+        logging.error(f"Create event for manager: {e}")
+        await callback.answer("❌ Ошибка", show_alert=True)
 
 @router.callback_query(F.data.startswith("delete_mgr_confirm:"))
 async def delete_manager_confirm(callback: types.CallbackQuery):
