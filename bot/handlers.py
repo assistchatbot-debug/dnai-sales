@@ -15,7 +15,7 @@ def get_admin_keyboard():
     from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="🏆 Лидерборд"), KeyboardButton(text="📅 События")],
+            [KeyboardButton(text="🏆 Лидерборд")],
             [KeyboardButton(text="📊 Статус")],
             [KeyboardButton(text="📢 Каналы"), KeyboardButton(text="🌐 Виджет")],
             [KeyboardButton(text="💳 Тарифы"), KeyboardButton(text="🌍 Язык")],
