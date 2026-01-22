@@ -480,6 +480,19 @@ async def view_lead(callback: types.CallbackQuery):
     lead_id = int(callback.data.split(":")[1])
     company_id = callback.bot.company_id
     lead = await get_lead_details(company_id, lead_id)
+    # Загружаем события
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f'{API_BASE_URL}/crm/{company_id}/leads/{lead_id}/events') as resp:
+                if resp.status == 200:
+                    from datetime import datetime
+                    events = await resp.json()
+                    now = datetime.now()
+                    future = [e for e in events if datetime.fromisoformat(e["scheduled_at"].replace("Z", "+00:00")) > now]
+                    lead["events"] = sorted(future, key=lambda x: x["scheduled_at"])[:3]
+    except Exception as e:
+        logging.error(f"Events load error: {e}")
+        lead["events"] = []
     if not lead:
         await callback.answer("❌ Не найден", show_alert=True)
         return
