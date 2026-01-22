@@ -867,3 +867,4 @@ async def delete_event(company_id: int, event_id: int):
         """), {'eid': event_id, 'cid': company_id})
         await db.commit()
         return {"status": "ok", "deleted": event_id}
+
