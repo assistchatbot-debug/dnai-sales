@@ -681,6 +681,7 @@ async def create_event(company_id: int, data: dict = Body(...)):
     description = data.get('description', '')
     scheduled_at = data.get('scheduled_at')
     remind_before = data.get('remind_before_minutes', 30)
+    created_by_user_id = data.get('created_by_user_id')
     
     from datetime import datetime
     
@@ -691,11 +692,11 @@ async def create_event(company_id: int, data: dict = Body(...)):
     async with get_db_session() as db:
         result = await db.execute(text("""
             INSERT INTO lead_events_schedule 
-            (company_id, lead_id, user_id, event_type, title, description, scheduled_at, remind_before_minutes)
-            VALUES (:cid, :lid, :uid, :type, :title, :desc, :sched, :remind)
+            (company_id, lead_id, user_id, event_type, title, description, scheduled_at, remind_before_minutes, created_by_user_id)
+            VALUES (:cid, :lid, :uid, :type, :title, :desc, :sched, :remind, :creator)
             RETURNING id
         """), {'cid': company_id, 'lid': lead_id, 'uid': user_id, 'type': event_type, 
-               'title': title, 'desc': description, 'sched': scheduled_at, 'remind': remind_before})
+               'title': title, 'desc': description, 'sched': scheduled_at, 'remind': remind_before, 'creator': created_by_user_id})
         event_id = result.scalar()
         await db.commit()
         return {"id": event_id, "status": "ok"}
