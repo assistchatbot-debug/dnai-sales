@@ -19,7 +19,7 @@ def get_admin_keyboard():
             [KeyboardButton(text="📊 Статус")],
             [KeyboardButton(text="📢 Каналы"), KeyboardButton(text="🌐 Виджет")],
             [KeyboardButton(text="💳 Тарифы"), KeyboardButton(text="🌍 Язык")],
-            [KeyboardButton(text="👥 Менеджеры"), KeyboardButton(text="📋 Лиды")],
+            [KeyboardButton(text="👥 Менеджеры"), KeyboardButton(text="📅 События")],
             [KeyboardButton(text="🔌 Внешняя CRM"), KeyboardButton(text="📊 Внутренняя CRM")],
             [KeyboardButton(text="📈 Лиды за неделю"), KeyboardButton(text="📅 Лиды за месяц")]
         ],
