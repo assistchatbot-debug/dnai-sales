@@ -708,14 +708,15 @@ async def get_user_events(company_id: int, user_id: int = None, offset: int = 0,
     async with get_db_session() as db:
         query = """
             SELECT e.id, e.lead_id, e.event_type, e.title, e.description, 
-                   e.scheduled_at, e.status, l.contact_info, e.is_recurring, e.recurring_pattern
+                   e.scheduled_at, e.status, l.contact_info, e.is_recurring, e.recurring_pattern,
+                   e.user_id, e.created_by_user_id
             FROM lead_events_schedule e
             LEFT JOIN leads l ON e.lead_id = l.id
             WHERE e.company_id = :cid AND e.status = 'pending'
         """
         params = {'cid': company_id}
         if user_id:
-            query += " AND (e.user_id = :uid OR e.created_by_user_id = :uid)"
+            query += " AND e.user_id = :uid"
             params['uid'] = user_id
         if event_type:
             query += " AND e.event_type = :etype"
@@ -736,7 +737,9 @@ async def get_user_events(company_id: int, user_id: int = None, offset: int = 0,
                 'description': r[4], 'scheduled_at': str(r[5]), 'status': r[6],
                 'client_name': contact.get('name', 'Клиент'),
                 'is_recurring': r[8] if len(r) > 8 else False,
-                'recurring_pattern': r[9] if len(r) > 9 else None
+                'recurring_pattern': r[9] if len(r) > 9 else None,
+                'user_id': r[10] if len(r) > 10 else None,
+                'created_by_user_id': r[11] if len(r) > 11 else None
             })
         return events
 
@@ -756,7 +759,7 @@ async def get_events_history(company_id: int, user_id: int = None, offset: int =
         """
         params = {'cid': company_id}
         if user_id:
-            query += " AND (e.user_id = :uid OR e.created_by_user_id = :uid)"
+            query += " AND e.user_id = :uid"
             params['uid'] = user_id
         query += " ORDER BY e.scheduled_at DESC LIMIT :lim OFFSET :off"
         params['lim'] = limit
@@ -867,4 +870,3 @@ async def delete_event(company_id: int, event_id: int):
         """), {'eid': event_id, 'cid': company_id})
         await db.commit()
         return {"status": "ok", "deleted": event_id}
-

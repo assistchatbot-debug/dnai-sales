@@ -1454,9 +1454,11 @@ async def show_events_list(msg_or_cb, offset=0, filter_type=None, filter_period=
         # Иконка повторения
         recur_icon = "🔁" if ev.get('is_recurring') else ""
         
-        # Различие с лидом / без лида
+        # Различие с лидом / без лида / от руководителя
         if ev.get('lead_id'):
             client_text = f"👤{client[:12]}"
+        elif ev.get('created_by_user_id') and ev.get('created_by_user_id') != ev.get('user_id'):
+            client_text = "👨‍💼Руковод."
         else:
             client_text = "🏷️Личное"
         
@@ -1576,6 +1578,8 @@ async def view_event_detail(callback: types.CallbackQuery):
         # Различие с/без лида
         if ev.get('lead_id'):
             client_line = f"👤 {client}"
+        elif ev.get('created_by_user_id') and ev.get('created_by_user_id') != ev.get('user_id'):
+            client_line = "👨‍💼 От Руководителя"
         else:
             client_line = "🏷️ Личное событие"
         
