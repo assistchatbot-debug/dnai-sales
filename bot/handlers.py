@@ -2135,10 +2135,38 @@ async def show_manager_card(callback: types.CallbackQuery):
                     leads_count = manager.get('leads_count', 0)
                     deals_count = manager.get('deals_count', 0)
                     
+                    # Получаем события менеджера
+                    events_text = ""
+                    async with session.get(f'{API_BASE_URL}/crm/{company_id}/events?user_id={user_id}&limit=20') as ev_resp:
+                        if ev_resp.status == 200:
+                            events = await ev_resp.json()
+                            from datetime import datetime
+                            now = datetime.now().isoformat()[:10]
+                            from datetime import datetime
+                            now = datetime.now().isoformat()[:10]
+                            admin_events = [e for e in events 
+                                if e.get('created_by_user_id') 
+                                and e.get('created_by_user_id') != user_id
+                                and e.get('scheduled_at', '')[:10] >= now
+                                and e.get('status') == 'pending']
+                            if admin_events:
+                                events_text = "\n\n📅 <b>Назначенные задачи:</b>"
+                                for ev in admin_events[:3]:
+                                    ev_type = {'call': '📞', 'meeting': '🤝', 'email': '📧', 'task': '📋'}.get(ev.get('event_type', ''), '📅')
+                                    sched = ev.get('scheduled_at', '')[:10]
+                                    if sched:
+                                        sched = f"{sched[8:10]}.{sched[5:7]}.{sched[:4]}"
+                                    desc = (ev.get('description') or ev.get('title') or '')[:20]
+                                    events_text += f"\n{ev_type} {sched} {desc}"
+                                if len(admin_events) > 3:
+                                    events_text += f"\n... и ещё {len(admin_events) - 3}"
+                            else:
+                                events_text = "\n\n📅 <b>Задачи:</b> Нет будущих событий"
+                    
                     text = f"""👤 <b>{name}</b>
 📞 @{username if username else 'не указан'}
 💰 Монеток: {coins}
-📊 Лидов: {leads_count} | Сделок: {deals_count}"""
+📊 Лидов: {leads_count} | Сделок: {deals_count}{events_text}"""
                     
                     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
                     kb = InlineKeyboardMarkup(inline_keyboard=[
