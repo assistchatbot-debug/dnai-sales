@@ -480,7 +480,7 @@ async def view_lead(callback: types.CallbackQuery):
     lead_id = int(callback.data.split(":")[1])
     company_id = callback.bot.company_id
     lead = await get_lead_details(company_id, lead_id)
-    # Загружаем события
+    # Загружаем события лида
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(f'{API_BASE_URL}/crm/{company_id}/leads/{lead_id}/events') as resp:
@@ -488,15 +488,16 @@ async def view_lead(callback: types.CallbackQuery):
                     from datetime import datetime
                     events = await resp.json()
                     now = datetime.now()
-                    future = [e for e in events if datetime.fromisoformat(e["scheduled_at"].replace("Z", "+00:00")) > now]
-                    lead["events"] = sorted(future, key=lambda x: x["scheduled_at"])[:3]
+                    future = [e for e in events if datetime.fromisoformat(e['scheduled_at'].replace('Z', '+00:00')) > now]
+                    lead['events'] = sorted(future, key=lambda x: x['scheduled_at'])[:3]
     except Exception as e:
-        logging.error(f"Events load error: {e}")
-        lead["events"] = []
+        logging.error(f"Load events error: {e}")
+        lead['events'] = []
     if not lead:
         await callback.answer("❌ Не найден", show_alert=True)
         return
     statuses = await get_statuses(company_id)
+    logging.info(f"[EVENTS DEBUG] lead_id={lead_id}, events in lead: {lead.get('events', 'KEY NOT FOUND')}")
     await callback.message.edit_text(format_lead_card(lead, statuses), parse_mode='HTML', reply_markup=get_lead_keyboard(lead_id, lead, statuses))
     await callback.answer()
 
@@ -920,7 +921,7 @@ async def calendar_day_selected(callback: types.CallbackQuery, state: FSMContext
     event_type = EVENT_TYPES.get(data.get('event_type', ''), '📋 Событие')
     # Формат: 19.01.2026
     formatted_date = f"{date_str[8:10]}.{date_str[5:7]}.{date_str[:4]}"
-    kb = get_hour_picker(10)
+    kb = get_hour_picker(12)
     await callback.message.edit_text(f"{event_type}: {formatted_date}\n\n⏰ Выберите час:", reply_markup=kb)
     await state.set_state(EventStates.selecting_hour)
 
@@ -1069,12 +1070,11 @@ async def save_event(callback: types.CallbackQuery, state: FSMContext):
                 f'{API_BASE_URL}/crm/{company_id}/events',
                 json={
                     'lead_id': int(data['event_lead_id']) if data.get('event_lead_id') else None,
-                    'user_id': data.get('target_manager_id') or callback.from_user.id,
+                    'user_id': callback.from_user.id,
                     'event_type': data['event_type'],
                     'description': data.get('event_description', ''),
                     'scheduled_at': data['scheduled_at'],
-                    'remind_before_minutes': remind,
-                    'created_by_user_id': callback.from_user.id if data.get('target_manager_id') else None
+                    'remind_before_minutes': remind
                 }
             ) as resp:
                 if resp.status == 200:
@@ -1413,13 +1413,9 @@ async def show_events_list(msg_or_cb, offset=0, filter_type=None, filter_period=
         user_id = msg_or_cb.from_user.id
     
     # Получаем события
-    # Админ видит свои события И события которые он создал для менеджеров
-    url = f'{API_BASE_URL}/crm/{company_id}/events?user_id={user_id}&offset={offset}&limit=10'
+    url = f'{API_BASE_URL}/crm/{company_id}/events?user_id={user_id}&offset={offset}&limit=50'
     if filter_type:
-        if filter_type == 'recurring':
-            url += '&is_recurring=true'
-        else:
-            url += f'&event_type={filter_type}' 
+        url += f'&event_type={filter_type}'
     
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as resp:
@@ -1431,8 +1427,9 @@ async def show_events_list(msg_or_cb, offset=0, filter_type=None, filter_period=
         today = datetime.now().date().isoformat()
         events = [e for e in events if e.get('scheduled_at', '')[:10] == today]
     elif filter_period == 'week':
-        week_end = (datetime.now() + timedelta(days=7)).date().isoformat()
-        events = [e for e in events if e.get('scheduled_at', '')[:10] <= week_end]
+        today = datetime.now().date().isoformat()
+        week_end = (datetime.now() + timedelta(days=6)).date().isoformat()
+        events = [e for e in events if today <= e.get('scheduled_at', '')[:10] <= week_end]
     
     type_icons = {'call': '📞', 'meeting': '🤝', 'email': '📧', 'task': '📋'}
     buttons = []
@@ -1454,11 +1451,9 @@ async def show_events_list(msg_or_cb, offset=0, filter_type=None, filter_period=
         # Иконка повторения
         recur_icon = "🔁" if ev.get('is_recurring') else ""
         
-        # Различие с лидом / без лида / от руководителя
+        # Различие с лидом / без лида
         if ev.get('lead_id'):
             client_text = f"👤{client[:12]}"
-        elif ev.get('created_by_user_id') and ev.get('created_by_user_id') != ev.get('user_id'):
-            client_text = "👨‍💼Руковод."
         else:
             client_text = "🏷️Личное"
         
@@ -1496,7 +1491,7 @@ async def show_events_list(msg_or_cb, offset=0, filter_type=None, filter_period=
     
     # Создать событие
     buttons.append([
-        InlineKeyboardButton(text="➕ Создать", callback_data="create_ev_menu"),
+        InlineKeyboardButton(text="➕ Создать событие", callback_data="create_ev_menu"),
         InlineKeyboardButton(text="📜 История", callback_data="ev_history:0")
     ])
     
@@ -1578,8 +1573,6 @@ async def view_event_detail(callback: types.CallbackQuery):
         # Различие с/без лида
         if ev.get('lead_id'):
             client_line = f"👤 {client}"
-        elif ev.get('created_by_user_id') and ev.get('created_by_user_id') != ev.get('user_id'):
-            client_line = "👨‍💼 От Руководителя"
         else:
             client_line = "🏷️ Личное событие"
         
@@ -1588,8 +1581,6 @@ async def view_event_detail(callback: types.CallbackQuery):
             text += f"\n📝 {desc}"
         
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Выполнено", callback_data=f"evst:done:{event_id}"),
-             InlineKeyboardButton(text="⚠️ Не выполнено", callback_data=f"evst:missed:{event_id}")],
             [InlineKeyboardButton(text="✏️ Редактировать", callback_data=f"edit_event:{event_id}"),
              InlineKeyboardButton(text="🗑 Удалить", callback_data=f"del_event:{event_id}")],
             [InlineKeyboardButton(text="« Назад", callback_data="back_ev_list")]
@@ -1601,6 +1592,47 @@ async def view_event_detail(callback: types.CallbackQuery):
 
 
 @crm_router.callback_query(F.data == "back_ev_list")
+async def back_events_list(callback: types.CallbackQuery):
+    await show_events_list(callback, 0, None, None)
+    await callback.answer()
+
+
+@crm_router.callback_query(F.data.startswith("ev_history:"))
+async def show_event_history(callback: types.CallbackQuery):
+    """История событий"""
+    offset = int(callback.data.split(":")[1])
+    company_id = getattr(callback.bot, 'company_id', 1)
+    user_id = callback.from_user.id
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.get(f'{API_BASE_URL}/crm/{company_id}/events/history?user_id={user_id}&offset={offset}&limit=5') as resp:
+            events = await resp.json() if resp.status == 200 else []
+    
+    type_icons = {'call': '📞', 'meeting': '🤝', 'email': '📧', 'task': '📋'}
+    status_icons = {'done': '✅', 'missed': '⚠️', 'cancelled': '❌'}
+    
+    if events:
+        text = "<b>📜 История событий:</b>\n\n"
+        for ev in events[:5]:
+            icon = type_icons.get(ev.get('event_type', ''), '📅')
+            st_icon = status_icons.get(ev.get('status', ''), '❓')
+            sched = ev.get('scheduled_at', '')[:10]
+            date_fmt = f"{sched[8:10]}.{sched[5:7]}.{sched[:4]}" if sched else ""
+            client = (ev.get('client_name') or 'Личное')[:15]
+            text += f"{st_icon}{icon} {date_fmt} — {client}\n"
+    else:
+        text = "<b>📜 История пуста</b>"
+    
+    page = (offset // 5) + 1
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="◀️", callback_data=f"ev_history:{max(0,offset-5)}"),
+         InlineKeyboardButton(text=f"стр.{page}", callback_data="ev_ign"),
+         InlineKeyboardButton(text="▶️", callback_data=f"ev_history:{offset+5}")],
+        [InlineKeyboardButton(text="« Назад", callback_data="back_ev_list")]
+    ])
+    await callback.message.edit_text(text, parse_mode='HTML', reply_markup=kb)
+    await callback.answer()
+
 async def back_events_list(callback: types.CallbackQuery):
     await show_events_list(callback, 0, None, None)
     await callback.answer()
@@ -1661,83 +1693,3 @@ async def set_recurring(callback: types.CallbackQuery):
         )
     await callback.answer()
 
-
-
-# ========== EVENT STATUS & HISTORY HANDLERS ==========
-
-@crm_router.callback_query(F.data.startswith("evst:"))
-async def set_event_status(callback: types.CallbackQuery):
-    """Изменить статус события (done/missed)"""
-    parts = callback.data.split(":")
-    new_status = parts[1]
-    event_id = int(parts[2])
-    company_id = getattr(callback.bot, 'company_id', 1)
-    
-    async with aiohttp.ClientSession() as session:
-        await session.patch(
-            f'{API_BASE_URL}/crm/{company_id}/events/{event_id}',
-            json={'status': new_status}
-        )
-    
-    status_names = {'done': '✅ Выполнено', 'missed': '⚠️ Не выполнено'}
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="« К событиям", callback_data="back_ev_list")]
-    ])
-    await callback.message.edit_text(f"Событие #{event_id} — {status_names.get(new_status, new_status)}", reply_markup=kb)
-    await callback.answer()
-
-
-@crm_router.callback_query(F.data.startswith("ev_history:"))
-async def show_event_history(callback: types.CallbackQuery):
-    """История событий"""
-    offset = int(callback.data.split(":")[1])
-    company_id = getattr(callback.bot, 'company_id', 1)
-    user_id = callback.from_user.id
-    
-    async with aiohttp.ClientSession() as session:
-        async with session.get(f'{API_BASE_URL}/crm/{company_id}/events/history?user_id={user_id}&offset={offset}&limit=5') as resp:
-            events = await resp.json() if resp.status == 200 else []
-    
-    type_icons = {'call': '📞', 'meeting': '🤝', 'email': '📧', 'task': '📋'}
-    status_icons = {'done': '✅', 'missed': '⚠️', 'cancelled': '❌'}
-    
-    if events:
-        text = "<b>📜 История событий:</b>\n\n"
-        for ev in events[:5]:
-            icon = type_icons.get(ev.get('event_type', ''), '📅')
-            st_icon = status_icons.get(ev.get('status', ''), '❓')
-            sched = ev.get('scheduled_at', '')[:10]
-            date_fmt = f"{sched[8:10]}.{sched[5:7]}.{sched[:4]}" if sched else ""
-            client = (ev.get('client_name') or 'Личное')[:15]
-            text += f"{st_icon}{icon} {date_fmt} — {client}\n"
-    else:
-        text = "<b>📜 История пуста</b>"
-    
-    page = (offset // 5) + 1
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="◀️", callback_data=f"ev_history:{max(0,offset-5)}"),
-         InlineKeyboardButton(text=f"стр.{page}", callback_data="ev_ign"),
-         InlineKeyboardButton(text="▶️", callback_data=f"ev_history:{offset+5}")],
-        [InlineKeyboardButton(text="« Назад", callback_data="back_ev_list")]
-    ])
-    await callback.message.edit_text(text, parse_mode='HTML', reply_markup=kb)
-    await callback.answer()
-
-
-# === Создание события для менеджера (от админа) ===
-@crm_router.callback_query(F.data.startswith("etype_mgr:"))
-async def select_event_type_for_manager(callback: types.CallbackQuery, state: FSMContext):
-    """Выбор типа события для менеджера"""
-    parts = callback.data.split(":")
-    event_type = parts[1]
-    manager_id = int(parts[2])
-    
-    await state.update_data(
-        event_type=event_type,
-        target_manager_id=manager_id,
-        created_by_admin=True
-    )
-    
-    kb = get_calendar()
-    await callback.message.edit_text("📅 Выберите дату:", reply_markup=kb)
-    await state.set_state(EventStates.selecting_date)
