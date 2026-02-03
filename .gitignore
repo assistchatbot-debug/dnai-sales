@@ -35,3 +35,5 @@ integrations/clients/*/venv/
 integrations/clients/*/*.db
 !integrations/shared/
 !integrations/clients/*/.env.example
+*.sh
+integrations/**/*.sh
