@@ -5,6 +5,93 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104-green.svg)](https://fastapi.tiangolo.com/)
 [![Aiogram](https://img.shields.io/badge/Aiogram-3.x-blue.svg)](https://docs.aiogram.dev/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-blue.svg)](https://www.postgresql.org/)
+
+## 🔗 WhatsApp Business Setup Integration (NEW)
+
+**Status:** Phase 1 ✅ | Phase 2 🔄 (2026-02-05)
+
+New feature: Allow customers to connect WhatsApp Business accounts via a **web form** without terminal setup.
+
+### Quick Start
+- **Live URL:** https://bizdnai.com/whatsapp-setup/
+- **Tech Spec:** See [WHATSAPP-INTEGRATION-TECH-SPEC.md](/.openclaw/workspace/WHATSAPP-INTEGRATION-TECH-SPEC.md)
+- **Phase 1 Status:** QR code generation ✅ | Real WhatsApp linking (Phase 2) 🔄
+
+### User Flow
+```
+1. Customer opens: https://bizdnai.com/whatsapp-setup/
+2. Select language (RU/EN/KK/KY/UZ)
+3. Solve CAPTCHA (math puzzle)
+4. Enter WhatsApp number
+5. Confirm company info
+6. Scan QR code with WhatsApp Business
+7. [Phase 2] System detects → shows success ✅
+```
+
+### Backend Changes (Phase 1)
+**New endpoint:** `/sales/api/whatsapp/*`
+
+```python
+# File: backend/routers/whatsapp.py (NEW)
+POST   /sales/api/whatsapp/lookup                  # Verify phone in DB
+POST   /sales/api/whatsapp/pairing/create          # Generate QR code
+GET    /sales/api/whatsapp/pairing/status          # Check status (polling)
+POST   /sales/api/whatsapp/pairing/webhook         # OpenClaw callback [Phase 2]
+```
+
+**Database:** New table `whatsapp_pairings`
+```sql
+id (UUID) | company_id (FK) | phone | qr_code | status | linked_at | expires_at
+```
+
+**Trigger:** Auto-updates `companies.whatsapp` when status='linked'
+
+### Frontend (Phase 1)
+**New app:** `frontend/whatsapp-setup/`
+- React 18 + Vite
+- Tailwind CSS (dark theme, purple gradients)
+- 6-page flow (Language → CAPTCHA → Phone → Confirm → QR → Success)
+- Deployed to: `/var/www/bizdnai/whatsapp-setup/` (Nginx)
+- Polling: checks pairing status every 2 seconds
+
+### Deployment
+
+```bash
+# Build frontend
+cd frontend/whatsapp-setup
+npm install
+npm run build
+# Output: ../../www/whatsapp-setup/
+
+# Deploy to Nginx
+cp -r www/whatsapp-setup/* /var/www/bizdnai/whatsapp-setup/
+
+# Rebuild backend Docker
+docker-compose build --no-cache backend
+docker-compose up -d backend
+```
+
+### Testing
+
+```bash
+# Test QR generation
+curl -X POST http://127.0.0.1:8005/sales/api/whatsapp/pairing/create \
+  -H "Content-Type: application/json" \
+  -d '{"company_id": 1, "phone": "+77073333481"}'
+
+# Response: { pairing_id, qr_code (base64), expires_at, expires_in }
+```
+
+### Phase 2: Real WhatsApp Linking
+Requires integration with OpenClaw Baileys client:
+1. Listen for `authenticated` event in OpenClaw
+2. Call webhook: `POST /sales/api/whatsapp/pairing/webhook`
+3. Update status to `'linked'` in database
+4. Send Telegram notification to manager
+
+See [WHATSAPP-INTEGRATION-TECH-SPEC.md](/.openclaw/workspace/WHATSAPP-INTEGRATION-TECH-SPEC.md) for details.
+
+---
 ## 🚀 Features
 - ✅ **AI-Powered Conversations** - GPT-based product recommendations
 - 🎤 **Voice Recognition** - OpenAI Whisper for speech-to-text
