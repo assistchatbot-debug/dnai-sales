@@ -144,9 +144,9 @@ async def create_pairing_session(
             pairing_id = str(uuid4())
             expires_at = datetime.utcnow() + timedelta(minutes=5)
             
-            # 3. Call OpenClaw Gateway to start pairing (or use mock for testing)
+            # 3. Call OpenClaw Gateway to start pairing
+            # IMPORTANT: QR must come from Baileys, not generated locally
             try:
-                # Try to call real gateway first
                 async with httpx.AsyncClient() as client:
                     gateway_response = await client.post(
                         f"{GATEWAY_URL}/api/whatsapp/pairing/start",
@@ -157,29 +157,26 @@ async def create_pairing_session(
                         headers={
                             "Authorization": f"Bearer {GATEWAY_TOKEN}"
                         },
-                        timeout=10.0
+                        timeout=30.0  # Wait for Baileys to generate QR
                     )
                     
-                    if gateway_response.status_code == 200:
-                        gateway_data = gateway_response.json()
-                        qr_code = gateway_data.get('qr_code', '')
-                        pairing_code = gateway_data.get('pairing_code', '')
-                    else:
-                        raise Exception("Gateway returned error")
+                    if gateway_response.status_code != 200:
+                        logger.error(f"Gateway error: {gateway_response.status_code}")
+                        raise HTTPException(status_code=503, detail="Gateway unavailable")
                     
+                    gateway_data = gateway_response.json()
+                    qr_code = gateway_data.get('qr_code', '')  # From Baileys
+                    pairing_code = gateway_data.get('pairing_code', '')
+                    
+                    if not qr_code:
+                        raise HTTPException(status_code=503, detail="No QR from gateway")
+                    
+            except httpx.TimeoutException:
+                logger.error("Gateway timeout - QR generation took too long")
+                raise HTTPException(status_code=503, detail="Gateway timeout")
             except Exception as e:
-                logger.warning(f"Gateway unavailable, using mock QR: {e}")
-                # Generate mock QR code for testing
-                pairing_code = f"{company_id:03d}-{phone[-6:]}"
-                qr = qrcode.QRCode(version=1, box_size=10, border=4)
-                qr.add_data(pairing_code)
-                qr.make(fit=True)
-                
-                img = qr.make_image(fill_color="black", back_color="white")
-                buffer = io.BytesIO()
-                img.save(buffer, format='PNG')
-                qr_bytes = buffer.getvalue()
-                qr_code = f"data:image/png;base64,{base64.b64encode(qr_bytes).decode()}"
+                logger.error(f"Gateway call error: {e}")
+                raise HTTPException(status_code=503, detail="Failed to generate QR")
             
             # 4. Insert or update into whatsapp_pairings (UPSERT)
             await db.execute(
