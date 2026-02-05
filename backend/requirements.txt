@@ -8,3 +8,4 @@ pydantic
 slowapi
 openai
 python-multipart
+qrcode[pil]

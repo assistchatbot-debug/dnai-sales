@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from database import engine, Base
-from routers import companies, sales_agent, widget, crm
+from routers import companies, sales_agent, widget, crm, whatsapp
 import logging
 import os
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -34,6 +34,7 @@ app.include_router(companies.router)
 app.include_router(sales_agent.router)
 app.include_router(widget.router)
 app.include_router(crm.router)
+app.include_router(whatsapp.router)
 
 @app.on_event("startup")
 async def startup():
